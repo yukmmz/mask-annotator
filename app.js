@@ -24,7 +24,7 @@
     frames: [],        // [{name,W,H,bitmap,diffBitmap,imgData,diff,mask,history}]
     bg: null,          // {W,H,imgData}
     idx: 0,
-    object: 'robot',
+    object: '',        // 対象名（必須・自由入力）。未入力の間はマスク作成/出力を不可にする
     addMode: true,
     lassoOutside: false,   // 外側選択（なげなわ）モード。ON中はPencilで囲って外側をADD/REMOVE
     showDiff: false,
@@ -57,6 +57,13 @@
 
   function computeDatasetKey() {
     return (state.packName || '') + '::' + state.frames.map((f) => f.name).join('|');
+  }
+
+  // 対象名: 安全な文字（英数・_・-）のみ許可。ファイル名/manifest名に使うため。
+  function sanitizeObject(s) { return (s || '').trim().replace(/[^A-Za-z0-9_-]/g, ''); }
+  function objectReady() { return !!state.object; }   // 未入力ならマスク作成/出力を禁止
+  function updateObjEmptyCue() {
+    const inp = $('objInput'); if (inp) inp.classList.toggle('required-empty', !state.object);
   }
 
   // ── キャンバス ───────────────────────────────────────────
@@ -408,6 +415,9 @@
         }
         e.preventDefault(); return;
       }
+      if (!objectReady()) {            // 対象未入力ならマスク作成不可
+        setStatus('対象を入力してください（必須）'); e.preventDefault(); return;
+      }
       if (state.lassoOutside) {         // 外側選択: Pencilでなぞって範囲を囲む
         lassoing = true; lassoId = e.pointerId; view.setPointerCapture(e.pointerId);
         const w = toWorld(p.x, p.y); lassoPts = [[w.x, w.y]];
@@ -499,8 +509,10 @@
     if (modalBusy()) { setStatus('編集モード中です。先に確定/取消してください'); return; }
     clearAutoSeed();
     state.object = obj;
+    updateObjEmptyCue();
     if (state.frames.length) { await restoreMasks(); rebuildOverlays(); }
     updateFrameLabel();
+    if (!obj) setStatus('対象を入力してください（必須）');
   }
 
   function updateFrameLabel() {
@@ -526,6 +538,7 @@
   }
   async function exportZip() {
     if (modalBusy()) { setStatus('編集モード中です。先に確定/取消してください'); return; }
+    if (!objectReady()) { setStatus('対象を入力してください（必須）'); return; }
     if (!state.frames.length) { setStatus('画像が未読込'); return; }
     if (typeof JSZip === 'undefined') { setStatus('JSZip読込失敗（オンライン要）'); return; }
     setStatus('ZIP生成中...');
@@ -651,6 +664,7 @@
 
   function copyPrevMask() {
     if (modalBusy()) { setStatus('編集モード中です。先に確定/取消してください'); return; }
+    if (!objectReady()) { setStatus('対象を入力してください（必須）'); return; }
     if (!state.frames.length) { setStatus('画像が未読込'); return; }
     if (state.idx <= 0) { setStatus('前のフレームがありません（先頭フレーム）'); return; }
     const prev = state.frames[state.idx - 1];
@@ -706,6 +720,7 @@
   // center→tip→trailing の3点を Pencil タップで配置 → 緑で楕円プレビュー → 確定でマスクに合流。
   function enterThreePoint() {
     if (modalBusy()) { setStatus('編集モード中です。先に確定/取消してください'); return; }
+    if (!objectReady()) { setStatus('対象を入力してください（必須）'); return; }
     if (!state.frames.length) { setStatus('画像が未読込'); return; }
     if (state.object !== 'wing') { setStatus('3点(翼)モードは対象=wingで使います（対象をwingに）'); return; }
     clearAutoSeed();
@@ -780,6 +795,7 @@
   }
   function runAutoSeed() {
     if (modalBusy()) { setStatus('編集モード中です。先に確定/取消してください'); return; }
+    if (!objectReady()) { setStatus('対象を入力してください（必須）'); return; }
     const fr = curFrame(); if (!fr) { setStatus('画像が未読込'); return; }
     if (!fr.diff) { setStatus('背景未読込のため自動シードは使えません（背景を読み込む）'); return; }
     const mask = LinkSeed.linkSeedFromDiff(fr.imgData.data, fr.diff, fr.W, fr.H, state.autoParams);
@@ -790,6 +806,7 @@
   }
   function applyAutoSeed() {
     if (modalBusy()) { setStatus('編集モード中です。先に確定/取消してください'); return; }
+    if (!objectReady()) { setStatus('対象を入力してください（必須）'); return; }
     const fr = curFrame(); if (!fr || !state.autoSeed) { setStatus('先に「Auto実行」してください'); return; }
     fr.history.push(fr.mask.slice());
     if (fr.history.length > 20) fr.history.shift();
@@ -851,6 +868,7 @@
   function applyLassoOutside(pts) {
     const fr = curFrame(); if (!fr) return;
     clearStrokeCanvas();
+    if (!objectReady()) { render(); setStatus('対象を入力してください（必須）'); return; }
     if (pts.length < 3) { render(); setStatus('範囲が小さすぎます（もっと大きく囲む）'); return; }
     const inside = Lasso.polygonFillMask(pts, fr.W, fr.H);
     let nin = 0; for (let i = 0; i < inside.length; i++) nin += inside[i];
@@ -872,10 +890,12 @@
   $('fileImport').onchange = (e) => { onImportZips(e.target.files); e.target.value = ''; };
 
   $('packName').onchange = (e) => setPackName(e.target.value);
-  $('objSelect').onchange = (e) => {
-    // 編集モード中の対象切替はブロックし、ドロップダウン表示を元に戻す
+  $('objInput').onchange = (e) => {
+    // 編集モード中の対象変更はブロックし、入力を元に戻す
     if (modalBusy()) { setStatus('編集モード中です。先に確定/取消してください'); e.target.value = state.object; return; }
-    switchObject(e.target.value);
+    const v = sanitizeObject(e.target.value);   // 安全な文字のみに正規化
+    e.target.value = v;
+    switchObject(v);
   };
   $('btnCopyPrev').onclick = copyPrevMask;
   $('btnTransformApply').onclick = applyTransform;
@@ -931,5 +951,7 @@
   $('sReach').oninput = (e) => { state.reach = +e.target.value; $('vReach').textContent = e.target.value; };
 
   // 初期化
+  updateObjEmptyCue();              // 対象未入力の赤枠キューを反映
+  setStatus('対象を入力してください（必須）');
   resizeView();
 })();

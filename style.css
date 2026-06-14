@@ -55,6 +55,9 @@ input[type=text] {
   min-height: 34px; width: 130px;
 }
 label { display: flex; align-items: center; gap: 6px; }
+/* 対象が未入力（必須）の間は赤枠で促す */
+#objInput { width: 100px; }
+#objInput.required-empty { border-color: #d40000; background: #3a2526; }
 
 .tag {
   background: var(--tag); border-radius: 6px; padding: 4px 8px;

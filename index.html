@@ -18,13 +18,15 @@
         <button id="btnLoadBg">背景</button>
         <span id="bgState" class="tag off">bg:なし</span>
         <label>対象
-          <select id="objSelect">
-            <option value="robot">robot</option>
-            <option value="box">box</option>
-            <option value="mech">mech</option>
-            <option value="wing">wing</option>
-          </select>
+          <input id="objInput" type="text" list="objSuggest" placeholder="必須"
+                 inputmode="latin" autocapitalize="off" autocomplete="off" />
         </label>
+        <datalist id="objSuggest">
+          <option value="robot"></option>
+          <option value="box"></option>
+          <option value="mech"></option>
+          <option value="wing"></option>
+        </datalist>
         <button id="btnExport" class="primary">ZIP出力</button>
         <span class="menu-wrap">
           <button id="btnMore" title="その他のツール">その他 &#8943;</button>
