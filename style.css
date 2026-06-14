@@ -101,4 +101,6 @@ label { display: flex; align-items: center; gap: 6px; }
 input[type=range] { width: 130px; }
 /* 値表示(v*)はラベル内 span のみ。frameLabel(.tag)/status には適用しない */
 #quickbar label span { display: inline-block; min-width: 24px; text-align: right; }
-.status { color: var(--accent); margin-left: auto; font-size: 12px; }
+.status { color: var(--accent); font-size: 12px; }
+/* Undo/ADD のグループを右端へ寄せる（一番右=ADD/REMOVE, その左=Undo） */
+#quickbar .qright { margin-left: auto; }

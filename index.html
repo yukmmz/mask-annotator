@@ -50,11 +50,9 @@
 
     <!-- 常時表示クイックバー（折りたたんでも残す頻用コントロール） -->
     <div id="quickbar">
-      <button id="btnMode" class="mode-add">ADD</button>
       <button id="btnPrev">◀</button>
       <span id="frameLabel" class="tag">- / -</span>
       <button id="btnNext">▶</button>
-      <button id="btnUndo">Undo</button>
       <button id="btnFit">全体表示</button>
       <label>brush <input id="sBrush" type="range" min="2" max="60" step="1" value="8" />
         <span id="vBrush">8</span>px</label>
@@ -63,6 +61,11 @@
       <label>reach <input id="sReach" type="range" min="0" max="200" step="1" value="30" />
         <span id="vReach">30</span>px</label>
       <span id="status" class="status"></span>
+      <!-- 右端に寄せる頻用ボタン（一番右=ADD/REMOVE, その左=Undo） -->
+      <div class="group qright">
+        <button id="btnUndo">Undo</button>
+        <button id="btnMode" class="mode-add">ADD</button>
+      </div>
     </div>
 
     <!-- 移動/回転バー（前マスクコピー中のみ表示） -->
