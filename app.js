@@ -13,6 +13,9 @@
   const GREEN = [0, 220, 0];
   const PURPLE = [180, 0, 255];      // ADD なぞり中
   const ORANGE = [255, 140, 0];      // REMOVE なぞり中
+  const COPY_PREVIEW = [0, 200, 255]; // コピー移動/回転のプレビュー色（緑の確定マスクと区別）
+  const HANDLE_GAP_PX = 34;          // 回転ハンドルのマスク上端からの距離（画面px一定で描画）
+  const HANDLE_R_PX = 11;            // 回転ハンドル円の半径（画面px）
 
   const $ = (id) => document.getElementById(id);
 
@@ -27,6 +30,7 @@
     packName: '',      // データセット名（ZIP名・IndexedDB名前空間に使用）
     datasetKey: '',
     cam: { scale: 1, tx: 0, ty: 0 },
+    transform: null,   // コピー移動/回転モード中の状態（null=非モード）。詳細は enterTransformMode。
   };
 
   function computeDatasetKey() {
@@ -92,6 +96,7 @@
   }
 
   async function onLoadFrames(files) {
+    if (state.transform) { setStatus('先にコピーの移動/回転を確定/取消してください'); return; }
     const list = [...files].filter((f) => f.type.startsWith('image/'));
     if (!list.length) return;
     list.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
@@ -116,6 +121,7 @@
   }
 
   async function onLoadBg(file) {
+    if (state.transform) { setStatus('先にコピーの移動/回転を確定/取消してください'); return; }
     const im = await loadScaledImage(file);
     state.bg = { W: im.W, H: im.H, imgData: im.imgData };
     $('bgState').textContent = 'bg:あり'; $('bgState').classList.remove('off');
@@ -213,8 +219,44 @@
     ctx.imageSmoothingEnabled = false;
     const base = (state.showDiff && fr.diffBitmap) ? fr.diffBitmap : fr.bitmap;
     ctx.drawImage(base, 0, 0);
-    if (maskCanvas) ctx.drawImage(maskCanvas, 0, 0);
+    // 移動/回転モード中は確定マスク（緑）を隠し、コピープレビュー（シアン）だけ見せる
+    if (maskCanvas && !state.transform) ctx.drawImage(maskCanvas, 0, 0);
     if (strokeCanvas) ctx.drawImage(strokeCanvas, 0, 0);
+    if (state.transform) drawTransformOverlay();
+  }
+
+  // コピー移動/回転のプレビュー（シアンのマスク＋上部の回転ハンドル）を world 座標で描く。
+  // ハンドルはズーム率に依らず画面上で一定サイズになるよう半径/間隔を 1/scale する。
+  function drawTransformOverlay() {
+    const t = state.transform;
+    const scale = state.cam.scale;
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.translate(t.pivotX + t.tx, t.pivotY + t.ty);
+    ctx.rotate(t.angle);
+    ctx.translate(-t.pivotX, -t.pivotY);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(t.srcCanvas, 0, 0);
+    ctx.restore();
+    // 回転ハンドル（マスク上端中央から伸ばした棒＋円）
+    const gapW = HANDLE_GAP_PX / scale;
+    const anchor = MaskTransform.handlePoint(t.pivotX, t.pivotY, t.top, 0, t.tx, t.ty, t.angle);
+    const h = MaskTransform.handlePoint(t.pivotX, t.pivotY, t.top, gapW, t.tx, t.ty, t.angle);
+    ctx.save();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = '#4a9eff'; ctx.lineWidth = 2 / scale;
+    ctx.beginPath(); ctx.moveTo(anchor.x, anchor.y); ctx.lineTo(h.x, h.y); ctx.stroke();
+    ctx.beginPath(); ctx.arc(h.x, h.y, HANDLE_R_PX / scale, 0, Math.PI * 2);
+    ctx.fillStyle = '#4a9eff'; ctx.fill();
+    ctx.lineWidth = 1.5 / scale; ctx.strokeStyle = '#fff'; ctx.stroke();
+    ctx.restore();
+  }
+
+  // 回転ハンドルの画面（canvas css）座標。ヒットテスト用。
+  function handleScreenPos() {
+    const t = state.transform, scale = state.cam.scale;
+    const h = MaskTransform.handlePoint(t.pivotX, t.pivotY, t.top, HANDLE_GAP_PX / scale, t.tx, t.ty, t.angle);
+    return { x: h.x * scale + state.cam.tx, y: h.y * scale + state.cam.ty };
   }
 
   // clientX/Y（ビューポート基準）→ canvas ローカル CSS 座標。
@@ -232,6 +274,8 @@
 
   // ── ブラシ ───────────────────────────────────────────────
   let drawing = false, drawId = null, stroke = null, lastXY = null;
+  // コピー移動/回転モードのドラッグ状態
+  let movingMask = false, rotatingMask = false, tformPointerId = null, tformStartVals = null;
 
   function startStroke(cx, cy) {
     const fr = curFrame(); if (!fr) return;
@@ -291,16 +335,42 @@
   view.addEventListener('pointerdown', (e) => {
     const p = clientToLocal(e.clientX, e.clientY);
     if (e.pointerType === 'pen' || e.pointerType === 'mouse') {
+      if (state.transform) {           // 移動/回転モード: Pencil=移動 or ハンドル=回転
+        tformPointerId = e.pointerId; view.setPointerCapture(e.pointerId);
+        const w = toWorld(p.x, p.y);
+        const hs = handleScreenPos();
+        const t = state.transform;
+        if (Math.hypot(p.x - hs.x, p.y - hs.y) <= HANDLE_R_PX + 18) {
+          rotatingMask = true;        // ハンドルを掴んだ → 回転（掴んだ瞬間を基準にしてジャンプを防ぐ）
+          const a0 = MaskTransform.angleFromPointer(t.pivotX, t.pivotY, t.tx, t.ty, w.x, w.y);
+          tformStartVals = { angleOffset: t.angle - a0 };
+        } else {
+          movingMask = true;          // それ以外 → 平行移動
+          tformStartVals = { startTx: t.tx, startTy: t.ty, sx: w.x, sy: w.y };
+        }
+        e.preventDefault(); return;
+      }
       drawing = true; drawId = e.pointerId; view.setPointerCapture(e.pointerId);
       startStroke(p.x, p.y); e.preventDefault();
     } else { // touch
-      if (drawing) return;            // ペン描画中の手のひら等は無視（パームリジェクション）
+      if (drawing || movingMask || rotatingMask) return;  // ペン操作中の手のひら等は無視
       touches.set(e.pointerId, p);
       gesturePrev = null;
     }
   });
   view.addEventListener('pointermove', (e) => {
     const p = clientToLocal(e.clientX, e.clientY);
+    if ((movingMask || rotatingMask) && e.pointerId === tformPointerId) {
+      const w = toWorld(p.x, p.y); const t = state.transform;
+      if (rotatingMask) {
+        t.angle = MaskTransform.angleFromPointer(t.pivotX, t.pivotY, t.tx, t.ty, w.x, w.y) + tformStartVals.angleOffset;
+        updateRotReadout();
+      } else {
+        t.tx = tformStartVals.startTx + (w.x - tformStartVals.sx);
+        t.ty = tformStartVals.startTy + (w.y - tformStartVals.sy);
+      }
+      render(); e.preventDefault(); return;
+    }
     if (drawing && e.pointerId === drawId) { stampPath(p.x, p.y); e.preventDefault(); return; }
     if (touches.has(e.pointerId)) {
       touches.set(e.pointerId, p);
@@ -308,6 +378,9 @@
     }
   });
   function endPointer(e) {
+    if ((movingMask || rotatingMask) && e.pointerId === tformPointerId) {
+      movingMask = false; rotatingMask = false; tformPointerId = null; tformStartVals = null; return;
+    }
     if (drawing && e.pointerId === drawId) { commitStroke(); drawing = false; drawId = null; return; }
     if (touches.has(e.pointerId)) { touches.delete(e.pointerId); gesturePrev = null; }
   }
@@ -336,18 +409,22 @@
 
   // ── フレーム移動・編集操作 ────────────────────────────────
   function gotoFrame(i) {
+    if (state.transform) { setStatus('先にコピーの移動/回転を確定/取消してください'); return; }
     state.idx = Math.max(0, Math.min(state.frames.length - 1, i));
     rebuildOverlays(); updateFrameLabel();
   }
   function undo() {
+    if (state.transform) { setStatus('移動/回転中です（取消で破棄できます）'); return; }
     const fr = curFrame(); if (fr && fr.history.length) { fr.mask = fr.history.pop(); repaintMask(); render(); autosave(fr); }
   }
   function clearFrame() {
+    if (state.transform) { setStatus('移動/回転中です。先に確定/取消してください'); return; }
     const fr = curFrame(); if (!fr) return;
     fr.history.push(fr.mask.slice()); fr.mask = new Uint8Array(fr.W * fr.H);
     repaintMask(); render(); autosave(fr);
   }
   async function switchObject(obj) {
+    if (state.transform) { setStatus('先にコピーの移動/回転を確定/取消してください'); return; }
     state.object = obj;
     if (state.frames.length) { await restoreMasks(); rebuildOverlays(); }
     updateFrameLabel();
@@ -375,6 +452,7 @@
     return new Promise((res) => c.toBlob(res, 'image/png'));
   }
   async function exportZip() {
+    if (state.transform) { setStatus('先にコピーの移動/回転を確定/取消してください'); return; }
     if (!state.frames.length) { setStatus('画像が未読込'); return; }
     if (typeof JSZip === 'undefined') { setStatus('JSZip読込失敗（オンライン要）'); return; }
     setStatus('ZIP生成中...');
@@ -424,6 +502,7 @@
   async function onImportZips(files) {
     const list = [...files].filter((f) => /\.zip$/i.test(f.name));
     if (!list.length) return;
+    if (state.transform) { setStatus('先にコピーの移動/回転を確定/取消してください'); return; }
     if (!state.frames.length) { setStatus('先に「画像を読込」してください（再開は画像読込後）'); return; }
     if (typeof JSZip === 'undefined') { setStatus('JSZip読込失敗（オンライン要）'); return; }
     if (!state.packName) { setStatus('先に「背景」を読み込んでpack名を確定してから取り込んでください'); return; }
@@ -486,6 +565,81 @@
     setStatus(`取込完了: ${plan.length}枚 / 対象 ${[...objects].join(',')}（上書き）`);
   }
 
+  // ── 前フレームのマスクをコピー → 移動/回転 → 確定 ────────────
+  // コピーされたマスクは確定後に通常マスクと同じ（ADD/REMOVE/Undo で調整可能）。
+  function buildPreviewCanvas(mask, W, H) {
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const cc = c.getContext('2d');
+    const id = cc.createImageData(W, H);
+    for (let i = 0, j = 0; i < mask.length; i++, j += 4) {
+      if (mask[i]) {
+        id.data[j] = COPY_PREVIEW[0]; id.data[j + 1] = COPY_PREVIEW[1];
+        id.data[j + 2] = COPY_PREVIEW[2]; id.data[j + 3] = 255;
+      }
+    }
+    cc.putImageData(id, 0, 0);
+    return c;
+  }
+
+  function normDeg(rad) {
+    let d = (rad * 180 / Math.PI) % 360;
+    if (d > 180) d -= 360; if (d <= -180) d += 360;
+    return Math.round(d);
+  }
+  function updateRotReadout() {
+    const t = state.transform; if (t) $('rotReadout').textContent = normDeg(t.angle) + '°';
+  }
+
+  function copyPrevMask() {
+    if (state.transform) { setStatus('移動/回転中です。先に確定/取消してください'); return; }
+    if (!state.frames.length) { setStatus('画像が未読込'); return; }
+    if (state.idx <= 0) { setStatus('前のフレームがありません（先頭フレーム）'); return; }
+    const prev = state.frames[state.idx - 1];
+    const cur = curFrame();
+    if (!anySet(prev.mask)) { setStatus('前フレームにマスクがありません'); return; }
+    // 既にマスクがある時は誤操作防止の確認（Undoでも戻せるが二重に保護する）
+    if (anySet(cur.mask)) {
+      const ok = window.confirm(
+        'このフレームには既にマスクがあります。\n前フレームのマスクで置き換えますか?\n（あとで Undo で戻せます）');
+      if (!ok) { setStatus('コピーを中止しました'); return; }
+    }
+    enterTransformMode(prev.mask, prev.W, prev.H);
+  }
+
+  function enterTransformMode(srcMask, srcW, srcH) {
+    const b = MaskTransform.bboxCenter(srcMask, srcW, srcH);
+    state.transform = {
+      srcMask, srcW, srcH,
+      srcCanvas: buildPreviewCanvas(srcMask, srcW, srcH),
+      pivotX: b.cx, pivotY: b.cy, top: b.empty ? 0 : b.miny,
+      tx: 0, ty: 0, angle: 0,
+    };
+    $('transformBar').hidden = false;
+    updateRotReadout();
+    setStatus('Pencilでドラッグ=移動 / 上の○ハンドルをドラッグ=回転 → 確定');
+    render();
+  }
+
+  function applyTransform() {
+    const fr = curFrame(); const t = state.transform; if (!fr || !t) return;
+    // 確定は純関数の逆ワープ（最近傍）で厳密にラスタ化。プレビュー(canvas)と同じ剛体変換式。
+    const result = MaskTransform.transformMask(
+      t.srcMask, t.srcW, t.srcH, fr.W, fr.H, t.pivotX, t.pivotY, t.tx, t.ty, t.angle);
+    fr.history.push(fr.mask.slice());        // Undo で戻せるよう退避
+    if (fr.history.length > 20) fr.history.shift();
+    fr.mask = result;
+    exitTransform();
+    repaintMask(); clearStrokeCanvas(); render(); autosave(fr); updateFrameLabel();
+    setStatus('コピーを確定（ADD/REMOVEで調整できます）');
+  }
+  function exitTransform() { state.transform = null; $('transformBar').hidden = true; }
+  function cancelTransform() {
+    if (!state.transform) return;
+    exitTransform();
+    rebuildOverlays();   // 確定マスク（緑）の表示を戻す
+    setStatus('コピーを取消しました');
+  }
+
   // ── UI 配線 ──────────────────────────────────────────────
   $('btnLoadFrames').onclick = () => $('fileFrames').click();
   $('btnLoadBg').onclick = () => $('fileBg').click();
@@ -495,7 +649,14 @@
   $('fileImport').onchange = (e) => { onImportZips(e.target.files); e.target.value = ''; };
 
   $('packName').onchange = (e) => setPackName(e.target.value);
-  $('objSelect').onchange = (e) => switchObject(e.target.value);
+  $('objSelect').onchange = (e) => {
+    // 移動/回転中の対象切替はブロックし、ドロップダウン表示を元に戻す
+    if (state.transform) { setStatus('先にコピーの移動/回転を確定/取消してください'); e.target.value = state.object; return; }
+    switchObject(e.target.value);
+  };
+  $('btnCopyPrev').onclick = copyPrevMask;
+  $('btnTransformApply').onclick = applyTransform;
+  $('btnTransformCancel').onclick = cancelTransform;
   $('btnMode').onclick = () => {
     state.addMode = !state.addMode;
     const b = $('btnMode');

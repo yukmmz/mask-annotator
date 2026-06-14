@@ -38,6 +38,7 @@
       </div>
 
       <div class="group">
+        <button id="btnCopyPrev">前マスクをコピー</button>
         <button id="btnUndo">Undo</button>
         <button id="btnClear">Clear</button>
         <button id="btnDiff">Diff表示</button>
@@ -60,6 +61,15 @@
       <span id="status" class="status"></span>
     </div>
 
+    <!-- 移動/回転バー（前マスクコピー中のみ表示） -->
+    <div id="transformBar" hidden>
+      <span class="tag">マスク移動/回転</span>
+      <span id="rotReadout" class="tag">0&deg;</span>
+      <button id="btnTransformApply" class="primary">確定</button>
+      <button id="btnTransformCancel">取消</button>
+      <span class="barhint">Pencilでドラッグ=移動 / 上の&#9711;ハンドルをドラッグ=回転</span>
+    </div>
+
     <!-- 描画エリア -->
     <main id="stage">
       <canvas id="view"></canvas>
@@ -78,6 +88,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script src="brush.js"></script>
   <script src="mask_io.js"></script>
+  <script src="mask_transform.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
