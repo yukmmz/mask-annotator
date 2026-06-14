@@ -41,6 +41,11 @@
 
       <div class="group">
         <button id="btnCopyPrev">前マスクをコピー</button>
+        <button id="btn3pt">3点(翼)</button>
+        <button id="btnAuto">Auto(link)</button>
+      </div>
+
+      <div class="group">
         <button id="btnUndo">Undo</button>
         <button id="btnClear">Clear</button>
         <button id="btnDiff">Diff表示</button>
@@ -72,6 +77,28 @@
       <span class="barhint">Pencilでドラッグ=移動 / 上の&#9711;ハンドルをドラッグ=回転</span>
     </div>
 
+    <!-- 翼3点(楕円)バー（3点モード中のみ表示） -->
+    <div id="threePointBar" hidden>
+      <span class="tag">翼3点(楕円)</span>
+      <button id="btn3ptUndo">1点戻す</button>
+      <button id="btn3ptClear">クリア</button>
+      <button id="btn3ptApply" class="primary">確定</button>
+      <button id="btn3ptCancel">取消</button>
+      <span class="barhint">順: center &rarr; tip &rarr; trailing をPencilでタップ</span>
+    </div>
+
+    <!-- 自動シード(link)バー（Auto(link)トグルで表示） -->
+    <div id="autoBar" hidden>
+      <span class="tag">Auto(link)</span>
+      <label>motion <input id="aMotion" type="range" min="0" max="150" step="1" value="45" /><span id="vMotion">45</span></label>
+      <label>white <input id="aWhite" type="range" min="0" max="255" step="1" value="110" /><span id="vWhite">110</span></label>
+      <label>yellow <input id="aYellow" type="range" min="0" max="120" step="1" value="35" /><span id="vYellow">35</span></label>
+      <label>min-area <input id="aMinArea" type="range" min="0" max="3000" step="50" value="400" /><span id="vMinArea">400</span></label>
+      <button id="btnAutoRun" class="primary">Auto実行</button>
+      <button id="btnAutoApply">適用</button>
+      <button id="btnAutoClose">閉じる</button>
+    </div>
+
     <!-- 描画エリア -->
     <main id="stage">
       <canvas id="view"></canvas>
@@ -91,6 +118,8 @@
   <script src="brush.js"></script>
   <script src="mask_io.js"></script>
   <script src="mask_transform.js"></script>
+  <script src="wing_ellipse.js"></script>
+  <script src="linkseed.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

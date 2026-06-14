@@ -56,13 +56,18 @@ label { display: flex; align-items: center; gap: 6px; }
 }
 .tag.off { color: #ff9; }
 
-/* ── 移動/回転バー（前マスクコピー中のみ表示） ───── */
-#transformBar {
+/* ── サブバー（移動/回転・翼3点・自動シード。各モード中のみ表示） ───── */
+#transformBar, #threePointBar, #autoBar {
   display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
-  padding: 6px 10px; background: var(--accent);
+  padding: 6px 10px;
 }
-#transformBar .tag { background: rgba(0, 0, 0, 0.25); color: #fff; }
-#transformBar .barhint { color: #eaf3ff; font-size: 12px; margin-left: auto; }
+#transformBar, #threePointBar { background: var(--accent); }
+#autoBar { background: #2f6f4f; font-size: 13px; }   /* link自動シード=緑系で他と区別 */
+#transformBar .tag, #threePointBar .tag, #autoBar .tag { background: rgba(0, 0, 0, 0.25); color: #fff; }
+#transformBar .barhint, #threePointBar .barhint { color: #eaf3ff; font-size: 12px; margin-left: auto; }
+#autoBar label { gap: 6px; }
+#autoBar input[type=range] { width: 96px; }
+#autoBar span[id^="v"] { display: inline-block; min-width: 28px; text-align: right; }
 #rotReadout { min-width: 48px; }
 
 /* ── 描画ステージ ───────────────────────────── */

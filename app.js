@@ -14,6 +14,7 @@
   const PURPLE = [180, 0, 255];      // ADD なぞり中
   const ORANGE = [255, 140, 0];      // REMOVE なぞり中
   const COPY_PREVIEW = [0, 200, 255]; // コピー移動/回転のプレビュー色（緑の確定マスクと区別）
+  const AUTO_PREVIEW = [60, 130, 255]; // 自動シード(link)の青プレビュー色
   const HANDLE_GAP_PX = 34;          // 回転ハンドルのマスク上端からの距離（画面px一定で描画）
   const HANDLE_R_PX = 11;            // 回転ハンドル円の半径（画面px）
 
@@ -31,7 +32,26 @@
     datasetKey: '',
     cam: { scale: 1, tx: 0, ty: 0 },
     transform: null,   // コピー移動/回転モード中の状態（null=非モード）。詳細は enterTransformMode。
+    threePoint: null,  // 翼3点楕円モード中の状態（null=非モード）。{center,tip,trailing,previewCanvas}
+    autoSeed: null,    // 自動シード(link)のプレビュー（null=なし）。{mask, canvas}
+    autoParams: { motion: 45, white: 110, yellow: 35, min_area: 400 }, // LinkSeed と同値の既定
   };
+
+  // モーダル編集モード（コピー移動/回転・翼3点）中か。これらの間はフレーム移動等をブロックする。
+  // 自動シードのプレビューは非モーダル（ブラシ通常動作を妨げない）なので含めない。
+  function modalBusy() { return !!(state.transform || state.threePoint); }
+
+  // 0/1 マスクから、指定色で塗った不透明キャンバス（W×H）を作る（プレビュー描画用）。
+  function maskToCanvas(mask, W, H, rgb) {
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const cc = c.getContext('2d');
+    const id = cc.createImageData(W, H);
+    for (let i = 0, j = 0; i < mask.length; i++, j += 4) {
+      if (mask[i]) { id.data[j] = rgb[0]; id.data[j + 1] = rgb[1]; id.data[j + 2] = rgb[2]; id.data[j + 3] = 255; }
+    }
+    cc.putImageData(id, 0, 0);
+    return c;
+  }
 
   function computeDatasetKey() {
     return (state.packName || '') + '::' + state.frames.map((f) => f.name).join('|');
@@ -96,7 +116,7 @@
   }
 
   async function onLoadFrames(files) {
-    if (state.transform) { setStatus('先にコピーの移動/回転を確定/取消してください'); return; }
+    if (modalBusy()) { setStatus('編集モード中です。先に確定/取消してください'); return; }
     const list = [...files].filter((f) => f.type.startsWith('image/'));
     if (!list.length) return;
     list.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
@@ -121,7 +141,7 @@
   }
 
   async function onLoadBg(file) {
-    if (state.transform) { setStatus('先にコピーの移動/回転を確定/取消してください'); return; }
+    if (modalBusy()) { setStatus('編集モード中です。先に確定/取消してください'); return; }
     const im = await loadScaledImage(file);
     state.bg = { W: im.W, H: im.H, imgData: im.imgData };
     $('bgState').textContent = 'bg:あり'; $('bgState').classList.remove('off');
@@ -222,7 +242,28 @@
     // 移動/回転モード中は確定マスク（緑）を隠し、コピープレビュー（シアン）だけ見せる
     if (maskCanvas && !state.transform) ctx.drawImage(maskCanvas, 0, 0);
     if (strokeCanvas) ctx.drawImage(strokeCanvas, 0, 0);
+    if (state.autoSeed) { ctx.save(); ctx.globalAlpha = 0.55; ctx.drawImage(state.autoSeed.canvas, 0, 0); ctx.restore(); }
     if (state.transform) drawTransformOverlay();
+    if (state.threePoint) drawThreePointOverlay();
+  }
+
+  // 翼3点モードのプレビュー（1/4楕円を緑で塗る＋配置済み点のマーカー）を world 座標で描く。
+  function drawThreePointOverlay() {
+    const tp = state.threePoint; const scale = state.cam.scale;
+    if (tp.previewCanvas) {
+      ctx.save(); ctx.globalAlpha = 0.5; ctx.drawImage(tp.previewCanvas, 0, 0); ctx.restore();
+    }
+    const order = WingEllipse.POINT_ORDER;       // center→tip→trailing
+    const colors = { center: '#ff3b30', tip: '#ffcc00', trailing: '#ff2d95' };
+    const r = 7 / scale;
+    for (const k of order) {
+      const pt = tp[k]; if (!pt) continue;
+      ctx.save();
+      ctx.beginPath(); ctx.arc(pt[0], pt[1], r, 0, Math.PI * 2);
+      ctx.fillStyle = colors[k]; ctx.fill();
+      ctx.lineWidth = 1.5 / scale; ctx.strokeStyle = '#fff'; ctx.stroke();
+      ctx.restore();
+    }
   }
 
   // コピー移動/回転のプレビュー（シアンのマスク＋上部の回転ハンドル）を world 座標で描く。
@@ -335,6 +376,9 @@
   view.addEventListener('pointerdown', (e) => {
     const p = clientToLocal(e.clientX, e.clientY);
     if (e.pointerType === 'pen' || e.pointerType === 'mouse') {
+      if (state.threePoint) {          // 翼3点モード: Pencilタップで center→tip→trailing を配置
+        placeThreePoint(toWorld(p.x, p.y)); e.preventDefault(); return;
+      }
       if (state.transform) {           // 移動/回転モード: Pencil=移動 or ハンドル=回転
         tformPointerId = e.pointerId; view.setPointerCapture(e.pointerId);
         const w = toWorld(p.x, p.y);
@@ -409,22 +453,24 @@
 
   // ── フレーム移動・編集操作 ────────────────────────────────
   function gotoFrame(i) {
-    if (state.transform) { setStatus('先にコピーの移動/回転を確定/取消してください'); return; }
+    if (modalBusy()) { setStatus('編集モード中です。先に確定/取消してください'); return; }
+    clearAutoSeed();   // 自動シードプレビューはフレーム固有なので移動時に破棄
     state.idx = Math.max(0, Math.min(state.frames.length - 1, i));
     rebuildOverlays(); updateFrameLabel();
   }
   function undo() {
-    if (state.transform) { setStatus('移動/回転中です（取消で破棄できます）'); return; }
+    if (modalBusy()) { setStatus('編集モード中です（取消で破棄できます）'); return; }
     const fr = curFrame(); if (fr && fr.history.length) { fr.mask = fr.history.pop(); repaintMask(); render(); autosave(fr); }
   }
   function clearFrame() {
-    if (state.transform) { setStatus('移動/回転中です。先に確定/取消してください'); return; }
+    if (modalBusy()) { setStatus('編集モード中です。先に確定/取消してください'); return; }
     const fr = curFrame(); if (!fr) return;
     fr.history.push(fr.mask.slice()); fr.mask = new Uint8Array(fr.W * fr.H);
     repaintMask(); render(); autosave(fr);
   }
   async function switchObject(obj) {
-    if (state.transform) { setStatus('先にコピーの移動/回転を確定/取消してください'); return; }
+    if (modalBusy()) { setStatus('編集モード中です。先に確定/取消してください'); return; }
+    clearAutoSeed();
     state.object = obj;
     if (state.frames.length) { await restoreMasks(); rebuildOverlays(); }
     updateFrameLabel();
@@ -452,7 +498,7 @@
     return new Promise((res) => c.toBlob(res, 'image/png'));
   }
   async function exportZip() {
-    if (state.transform) { setStatus('先にコピーの移動/回転を確定/取消してください'); return; }
+    if (modalBusy()) { setStatus('編集モード中です。先に確定/取消してください'); return; }
     if (!state.frames.length) { setStatus('画像が未読込'); return; }
     if (typeof JSZip === 'undefined') { setStatus('JSZip読込失敗（オンライン要）'); return; }
     setStatus('ZIP生成中...');
@@ -502,7 +548,7 @@
   async function onImportZips(files) {
     const list = [...files].filter((f) => /\.zip$/i.test(f.name));
     if (!list.length) return;
-    if (state.transform) { setStatus('先にコピーの移動/回転を確定/取消してください'); return; }
+    if (modalBusy()) { setStatus('編集モード中です。先に確定/取消してください'); return; }
     if (!state.frames.length) { setStatus('先に「画像を読込」してください（再開は画像読込後）'); return; }
     if (typeof JSZip === 'undefined') { setStatus('JSZip読込失敗（オンライン要）'); return; }
     if (!state.packName) { setStatus('先に「背景」を読み込んでpack名を確定してから取り込んでください'); return; }
@@ -567,20 +613,6 @@
 
   // ── 前フレームのマスクをコピー → 移動/回転 → 確定 ────────────
   // コピーされたマスクは確定後に通常マスクと同じ（ADD/REMOVE/Undo で調整可能）。
-  function buildPreviewCanvas(mask, W, H) {
-    const c = document.createElement('canvas'); c.width = W; c.height = H;
-    const cc = c.getContext('2d');
-    const id = cc.createImageData(W, H);
-    for (let i = 0, j = 0; i < mask.length; i++, j += 4) {
-      if (mask[i]) {
-        id.data[j] = COPY_PREVIEW[0]; id.data[j + 1] = COPY_PREVIEW[1];
-        id.data[j + 2] = COPY_PREVIEW[2]; id.data[j + 3] = 255;
-      }
-    }
-    cc.putImageData(id, 0, 0);
-    return c;
-  }
-
   function normDeg(rad) {
     let d = (rad * 180 / Math.PI) % 360;
     if (d > 180) d -= 360; if (d <= -180) d += 360;
@@ -591,7 +623,7 @@
   }
 
   function copyPrevMask() {
-    if (state.transform) { setStatus('移動/回転中です。先に確定/取消してください'); return; }
+    if (modalBusy()) { setStatus('編集モード中です。先に確定/取消してください'); return; }
     if (!state.frames.length) { setStatus('画像が未読込'); return; }
     if (state.idx <= 0) { setStatus('前のフレームがありません（先頭フレーム）'); return; }
     const prev = state.frames[state.idx - 1];
@@ -607,10 +639,11 @@
   }
 
   function enterTransformMode(srcMask, srcW, srcH) {
+    clearAutoSeed();   // 非モーダルな自動シードプレビューが残っていれば消す
     const b = MaskTransform.bboxCenter(srcMask, srcW, srcH);
     state.transform = {
       srcMask, srcW, srcH,
-      srcCanvas: buildPreviewCanvas(srcMask, srcW, srcH),
+      srcCanvas: maskToCanvas(srcMask, srcW, srcH, COPY_PREVIEW),
       pivotX: b.cx, pivotY: b.cy, top: b.empty ? 0 : b.miny,
       tx: 0, ty: 0, angle: 0,
     };
@@ -640,6 +673,104 @@
     setStatus('コピーを取消しました');
   }
 
+  // ── 翼3点 1/4楕円ツール（対象=wing 用の別モード）────────────
+  // center→tip→trailing の3点を Pencil タップで配置 → 緑で楕円プレビュー → 確定でマスクに合流。
+  function enterThreePoint() {
+    if (modalBusy()) { setStatus('編集モード中です。先に確定/取消してください'); return; }
+    if (!state.frames.length) { setStatus('画像が未読込'); return; }
+    if (state.object !== 'wing') { setStatus('3点(翼)モードは対象=wingで使います（対象をwingに）'); return; }
+    clearAutoSeed();
+    state.threePoint = { center: null, tip: null, trailing: null, previewCanvas: null };
+    $('threePointBar').hidden = false;
+    setStatus('翼3点: center をPencilでタップ（順: center→tip→trailing）');
+    render();
+  }
+  function recomputeThreePointPreview() {
+    const tp = state.threePoint; const fr = curFrame(); if (!tp || !fr) return;
+    if (tp.center && tp.tip && tp.trailing) {
+      const em = WingEllipse.quarterEllipseMask(fr.W, fr.H, tp.center, tp.tip, tp.trailing);
+      tp.previewCanvas = maskToCanvas(em, fr.W, fr.H, GREEN);   // 退化時は空（透明）でよい
+    } else {
+      tp.previewCanvas = null;
+    }
+  }
+  function placeThreePoint(w) {
+    const tp = state.threePoint; if (!tp) return;
+    const order = WingEllipse.POINT_ORDER;
+    const idx = order.findIndex((k) => tp[k] == null);
+    if (idx === -1) { setStatus('3点配置済み。確定 / 1点戻す / クリア'); return; }
+    tp[order[idx]] = [w.x, w.y];
+    recomputeThreePointPreview();
+    const next = order.findIndex((k) => tp[k] == null);
+    setStatus(next === -1 ? '3点配置完了 → 確定 で塗る' : `次の点: ${order[next]} をタップ`);
+    render();
+  }
+  function undoThreePoint() {
+    const tp = state.threePoint; if (!tp) return;
+    const order = WingEllipse.POINT_ORDER;
+    for (let i = order.length - 1; i >= 0; i--) { if (tp[order[i]] != null) { tp[order[i]] = null; break; } }
+    recomputeThreePointPreview();
+    const next = order.findIndex((k) => tp[k] == null);
+    setStatus(next === -1 ? '3点配置完了 → 確定' : `次の点: ${order[next]} をタップ`);
+    render();
+  }
+  function clearThreePoint() {
+    const tp = state.threePoint; if (!tp) return;
+    tp.center = tp.tip = tp.trailing = null; tp.previewCanvas = null;
+    setStatus('点をクリア。center からタップ');
+    render();
+  }
+  function applyThreePoint() {
+    const fr = curFrame(); const tp = state.threePoint; if (!fr || !tp) return;
+    if (!(tp.center && tp.tip && tp.trailing)) { setStatus('3点を配置してください'); return; }
+    const em = WingEllipse.quarterEllipseMask(fr.W, fr.H, tp.center, tp.tip, tp.trailing);
+    if (!anySet(em)) { setStatus('退化した3点（一直線）。置き直してください'); return; }
+    fr.history.push(fr.mask.slice());               // Undo で戻せるよう退避
+    if (fr.history.length > 20) fr.history.shift();
+    for (let i = 0; i < em.length; i++) { if (em[i]) fr.mask[i] = 1; }  // 既存マスクへユニオン（加算）
+    exitThreePoint();
+    repaintMask(); clearStrokeCanvas(); render(); autosave(fr); updateFrameLabel();
+    setStatus('翼楕円を確定（ADD/REMOVEで調整できます）');
+  }
+  function exitThreePoint() { state.threePoint = null; $('threePointBar').hidden = true; }
+  function cancelThreePoint() {
+    if (!state.threePoint) return;
+    exitThreePoint();
+    rebuildOverlays();
+    setStatus('翼3点モードを取消しました');
+  }
+
+  // ── 自動シード(link): 黒背景の白リンクの土台マスクを自動生成（非モーダル）────
+  function toggleAutoPanel() {
+    const bar = $('autoBar');
+    bar.hidden = !bar.hidden;
+    if (bar.hidden) clearAutoSeed();   // 閉じたらプレビューを破棄
+    else setStatus('Auto(link): スライダ調整 →「Auto実行」で現フレームのシードを計算');
+  }
+  function runAutoSeed() {
+    if (modalBusy()) { setStatus('編集モード中です。先に確定/取消してください'); return; }
+    const fr = curFrame(); if (!fr) { setStatus('画像が未読込'); return; }
+    if (!fr.diff) { setStatus('背景未読込のため自動シードは使えません（背景を読み込む）'); return; }
+    const mask = LinkSeed.linkSeedFromDiff(fr.imgData.data, fr.diff, fr.W, fr.H, state.autoParams);
+    let cnt = 0; for (let i = 0; i < mask.length; i++) cnt += mask[i];
+    state.autoSeed = { mask, canvas: maskToCanvas(mask, fr.W, fr.H, AUTO_PREVIEW) };
+    render();
+    setStatus(`自動シード: ${cnt}px（青）→「適用」でマスクに合流（ADD/REMOVE準拠）`);
+  }
+  function applyAutoSeed() {
+    if (modalBusy()) { setStatus('編集モード中です。先に確定/取消してください'); return; }
+    const fr = curFrame(); if (!fr || !state.autoSeed) { setStatus('先に「Auto実行」してください'); return; }
+    fr.history.push(fr.mask.slice());
+    if (fr.history.length > 20) fr.history.shift();
+    const sm = state.autoSeed.mask;
+    if (state.addMode) { for (let i = 0; i < sm.length; i++) { if (sm[i]) fr.mask[i] = 1; } }
+    else { for (let i = 0; i < sm.length; i++) { if (sm[i]) fr.mask[i] = 0; } }
+    clearAutoSeed();
+    repaintMask(); render(); autosave(fr); updateFrameLabel();
+    setStatus(`自動シードを${state.addMode ? '追加' : '削除'}で適用（Undoで戻せます）`);
+  }
+  function clearAutoSeed() { if (state.autoSeed) { state.autoSeed = null; render(); } }
+
   // ── UI 配線 ──────────────────────────────────────────────
   $('btnLoadFrames').onclick = () => $('fileFrames').click();
   $('btnLoadBg').onclick = () => $('fileBg').click();
@@ -650,13 +781,30 @@
 
   $('packName').onchange = (e) => setPackName(e.target.value);
   $('objSelect').onchange = (e) => {
-    // 移動/回転中の対象切替はブロックし、ドロップダウン表示を元に戻す
-    if (state.transform) { setStatus('先にコピーの移動/回転を確定/取消してください'); e.target.value = state.object; return; }
+    // 編集モード中の対象切替はブロックし、ドロップダウン表示を元に戻す
+    if (modalBusy()) { setStatus('編集モード中です。先に確定/取消してください'); e.target.value = state.object; return; }
     switchObject(e.target.value);
   };
   $('btnCopyPrev').onclick = copyPrevMask;
   $('btnTransformApply').onclick = applyTransform;
   $('btnTransformCancel').onclick = cancelTransform;
+
+  // 翼3点モード
+  $('btn3pt').onclick = enterThreePoint;
+  $('btn3ptUndo').onclick = undoThreePoint;
+  $('btn3ptClear').onclick = clearThreePoint;
+  $('btn3ptApply').onclick = applyThreePoint;
+  $('btn3ptCancel').onclick = cancelThreePoint;
+
+  // 自動シード(link)
+  $('btnAuto').onclick = toggleAutoPanel;
+  $('btnAutoRun').onclick = runAutoSeed;
+  $('btnAutoApply').onclick = applyAutoSeed;
+  $('btnAutoClose').onclick = () => { $('autoBar').hidden = true; clearAutoSeed(); };
+  $('aMotion').oninput = (e) => { state.autoParams.motion = +e.target.value; $('vMotion').textContent = e.target.value; };
+  $('aWhite').oninput = (e) => { state.autoParams.white = +e.target.value; $('vWhite').textContent = e.target.value; };
+  $('aYellow').oninput = (e) => { state.autoParams.yellow = +e.target.value; $('vYellow').textContent = e.target.value; };
+  $('aMinArea').oninput = (e) => { state.autoParams.min_area = +e.target.value; $('vMinArea').textContent = e.target.value; };
   $('btnMode').onclick = () => {
     state.addMode = !state.addMode;
     const b = $('btnMode');
