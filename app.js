@@ -317,7 +317,7 @@
   let drawing = false, drawId = null, stroke = null, lastXY = null;
   // コピー移動/回転モードのドラッグ状態
   let movingMask = false, rotatingMask = false, tformPointerId = null, tformStartVals = null;
-  // 上部バーの折りたたみ（画像面積を最大化）
+  // 上部バーの折りたたみ（画像面積を最大化）。クイックバー(頻用コントロール)は畳まず常時表示。
   let chromeCollapsed = false;
   function setChromeCollapsed(v) {
     chromeCollapsed = v;

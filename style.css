@@ -22,14 +22,15 @@ html, body {
 
 #app { display: flex; flex-direction: column; height: 100%; }
 
-/* ── 上部バー（ツールバー＋スライダー） ───────────── */
-#toolbar, #sliders {
+/* ── 上部バー（ツールバー＋クイックバー） ───────────── */
+#toolbar, #quickbar {
   display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
   padding: 6px 10px;
 }
-/* 上端の safe-area はツールバーのみ。スライダーは下端ジェスチャ回避のため上部に置く */
 #toolbar { background: var(--panel); padding-top: max(6px, env(safe-area-inset-top)); }
-#sliders { background: var(--panel2); font-size: 13px; }
+#quickbar { background: var(--panel2); font-size: 13px; }
+/* 折りたたみ時はクイックバーが最上段になるので safe-area を付与 */
+#app.collapsed #quickbar { padding-top: max(6px, env(safe-area-inset-top)); }
 .group { display: flex; align-items: center; gap: 6px; }
 
 button, select {
@@ -71,9 +72,9 @@ label { display: flex; align-items: center; gap: 6px; }
 #rotReadout { min-width: 48px; }
 
 /* ── チョーム折りたたみ（画像面積の最大化） ───────── */
-/* 折りたたみ時は上部の全バーを display:none にして #stage(flex:1) を全面に広げる */
+/* 折りたたみ時はツールバーと各サブバーを display:none にして #stage(flex:1) を広げる。
+   クイックバー(#quickbar)は頻用コントロールなので畳まず常時表示する。 */
 #app.collapsed #toolbar,
-#app.collapsed #sliders,
 #app.collapsed #transformBar,
 #app.collapsed #threePointBar,
 #app.collapsed #autoBar { display: none !important; }
@@ -81,7 +82,7 @@ label { display: flex; align-items: center; gap: 6px; }
 /* 常時表示の小さなトグル（キャンバス上に浮かせる。畳んでも必ず押せる） */
 .chrome-toggle {
   position: absolute; z-index: 20;
-  top: calc(6px + env(safe-area-inset-top)); right: 8px;
+  top: 8px; right: 8px;
   min-height: 34px; padding: 4px 10px; font-size: 13px;
   background: rgba(42, 45, 51, 0.82); border: 1px solid #4a4f57;
   border-radius: 8px; color: var(--fg); opacity: 0.9;
@@ -96,7 +97,8 @@ label { display: flex; align-items: center; gap: 6px; }
 }
 
 /* ── スライダー ───────────────────────────── */
-#sliders label { gap: 8px; }
+#quickbar label { gap: 8px; }
 input[type=range] { width: 130px; }
-#sliders span { display: inline-block; min-width: 24px; text-align: right; }
+/* 値表示(v*)はラベル内 span のみ。frameLabel(.tag)/status には適用しない */
+#quickbar label span { display: inline-block; min-width: 24px; text-align: right; }
 .status { color: var(--accent); margin-left: auto; font-size: 12px; }
