@@ -36,6 +36,7 @@
     threePoint: null,  // 翼3点楕円モード中の状態（null=非モード）。{center,tip,trailing,previewCanvas}
     autoSeed: null,    // 自動シード(link)のプレビュー（null=なし）。{mask, canvas}
     autoParams: { motion: 45, white: 110, yellow: 35, min_area: 400 }, // LinkSeed と同値の既定
+    autoPinned: false, // Auto実行/Auto適用ボタンをクイックバーに常駐させるか
   };
 
   // モーダル編集モード（コピー移動/回転・翼3点）中か。これらの間はフレーム移動等をブロックする。
@@ -801,6 +802,17 @@
   }
   function clearAutoSeed() { if (state.autoSeed) { state.autoSeed = null; render(); } }
 
+  // Auto実行/Auto適用ボタンをクイックバーに常駐（ピン留め）させるトグル
+  function setAutoPinned(on) {
+    state.autoPinned = on;
+    const b = $('btnAutoPin'); if (b) b.classList.toggle('pin-on', on);
+    $('autoQuick').hidden = !on;
+  }
+  function toggleAutoPin() {
+    setAutoPinned(!state.autoPinned);
+    setStatus(state.autoPinned ? 'Auto実行/Auto適用をクイックバーに常駐' : 'Auto常駐を解除');
+  }
+
   // ── 外側選択（なげなわ）: 囲んだ範囲の外側を ADD/REMOVE ─────────
   function setLassoOutside(on) {
     state.lassoOutside = on;
@@ -883,6 +895,9 @@
   $('btnAuto').onclick = toggleAutoPanel;
   $('btnAutoRun').onclick = runAutoSeed;
   $('btnAutoApply').onclick = applyAutoSeed;
+  $('btnAutoPin').onclick = toggleAutoPin;
+  $('btnAutoRunQ').onclick = runAutoSeed;     // クイックバー常駐版（同じ動作）
+  $('btnAutoApplyQ').onclick = applyAutoSeed;
   $('btnAutoClose').onclick = () => { $('autoBar').hidden = true; clearAutoSeed(); };
   $('aMotion').oninput = (e) => { state.autoParams.motion = +e.target.value; $('vMotion').textContent = e.target.value; };
   $('aWhite').oninput = (e) => { state.autoParams.white = +e.target.value; $('vWhite').textContent = e.target.value; };
