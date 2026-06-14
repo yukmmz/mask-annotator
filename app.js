@@ -24,9 +24,14 @@
     addMode: true,
     showDiff: false,
     brushPx: 8, similarity: 20, reach: 30,
+    packName: '',      // データセット名（ZIP名・IndexedDB名前空間に使用）
     datasetKey: '',
     cam: { scale: 1, tx: 0, ty: 0 },
   };
+
+  function computeDatasetKey() {
+    return (state.packName || '') + '::' + state.frames.map((f) => f.name).join('|');
+  }
 
   // ── キャンバス ───────────────────────────────────────────
   const view = $('view');
@@ -102,7 +107,7 @@
     }
     state.frames = frames;
     state.idx = 0;
-    state.datasetKey = frames.map((f) => f.name).join('|');
+    state.datasetKey = computeDatasetKey();
     $('hint').style.display = 'none';
     await restoreMasks();
     if (state.bg) await computeAllDiffs();
@@ -114,8 +119,18 @@
     const im = await loadScaledImage(file);
     state.bg = { W: im.W, H: im.H, imgData: im.imgData };
     $('bgState').textContent = 'bg:あり'; $('bgState').classList.remove('off');
+    // 背景ファイル名 background_<stem>.png から pack名を自動取得
+    const m = file.name.match(/^background[_-](.+)\.[^.]+$/i);
+    if (m && !state.packName) await setPackName(m[1]);
     if (state.frames.length) { await computeAllDiffs(); render(); }
     setStatus('背景読込: 賢いブラシ有効');
+  }
+
+  async function setPackName(name) {
+    state.packName = (name || '').trim();
+    const inp = $('packName'); if (inp && inp.value !== state.packName) inp.value = state.packName;
+    state.datasetKey = computeDatasetKey();
+    if (state.frames.length) { await restoreMasks(); rebuildOverlays(); updateFrameLabel(); }
   }
 
   // 背景を各フレーム解像度へ合わせて diff を計算（＋diff表示用ビットマップ）
@@ -202,7 +217,14 @@
     if (strokeCanvas) ctx.drawImage(strokeCanvas, 0, 0);
   }
 
-  // 画面(css)座標 → 画像(world)座標
+  // clientX/Y（ビューポート基準）→ canvas ローカル CSS 座標。
+  // canvas はツールバー等の下にあるため rect.left/top を引かないと一定オフセットでズレる。
+  function clientToLocal(clientX, clientY) {
+    const r = view.getBoundingClientRect();
+    return { x: clientX - r.left, y: clientY - r.top };
+  }
+
+  // canvas ローカル(css)座標 → 画像(world)座標
   function toWorld(cx, cy) {
     return { x: (cx - state.cam.tx) / state.cam.scale, y: (cy - state.cam.ty) / state.cam.scale };
   }
@@ -267,19 +289,21 @@
   let gesturePrev = null;
 
   view.addEventListener('pointerdown', (e) => {
+    const p = clientToLocal(e.clientX, e.clientY);
     if (e.pointerType === 'pen' || e.pointerType === 'mouse') {
       drawing = true; drawId = e.pointerId; view.setPointerCapture(e.pointerId);
-      startStroke(e.clientX, e.clientY); e.preventDefault();
+      startStroke(p.x, p.y); e.preventDefault();
     } else { // touch
       if (drawing) return;            // ペン描画中の手のひら等は無視（パームリジェクション）
-      touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      touches.set(e.pointerId, p);
       gesturePrev = null;
     }
   });
   view.addEventListener('pointermove', (e) => {
-    if (drawing && e.pointerId === drawId) { stampPath(e.clientX, e.clientY); e.preventDefault(); return; }
+    const p = clientToLocal(e.clientX, e.clientY);
+    if (drawing && e.pointerId === drawId) { stampPath(p.x, p.y); e.preventDefault(); return; }
     if (touches.has(e.pointerId)) {
-      touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      touches.set(e.pointerId, p);
       onTouchMove(); e.preventDefault();
     }
   });
@@ -370,7 +394,8 @@
     };
     zip.file(`manifest_${obj}.json`, JSON.stringify(manifest, null, 2));
     const blob = await zip.generateAsync({ type: 'blob' });
-    downloadBlob(blob, `${obj}_masks.zip`);
+    const prefix = state.packName ? state.packName + '_' : '';
+    downloadBlob(blob, `${prefix}${obj}_masks.zip`);
     setStatus(`ZIP出力: ${entries.filter((e) => e.has_mask).length}枚にマスク`);
   }
   function downloadBlob(blob, name) {
@@ -386,6 +411,7 @@
   $('fileFrames').onchange = (e) => onLoadFrames(e.target.files);
   $('fileBg').onchange = (e) => { if (e.target.files[0]) onLoadBg(e.target.files[0]); };
 
+  $('packName').onchange = (e) => setPackName(e.target.value);
   $('objSelect').onchange = (e) => switchObject(e.target.value);
   $('btnMode').onclick = () => {
     state.addMode = !state.addMode;

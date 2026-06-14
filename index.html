@@ -20,6 +20,7 @@
       </div>
 
       <div class="group">
+        <label>pack <input id="packName" type="text" placeholder="(背景から自動)" /></label>
         <label>対象
           <select id="objSelect">
             <option value="robot">robot</option>
@@ -47,15 +48,8 @@
       </div>
     </header>
 
-    <!-- 描画エリア -->
-    <main id="stage">
-      <canvas id="view"></canvas>
-      <div id="hint">「画像を読込」でキーフレーム(frame_*.png)と背景を選択。<br />
-        Apple Pencilで描画 / 指でズーム・移動。</div>
-    </main>
-
-    <!-- 下部スライダー -->
-    <footer id="sliders">
+    <!-- スライダー（下端ジェスチャ回避のため上部に配置） -->
+    <div id="sliders">
       <label>brush <input id="sBrush" type="range" min="2" max="60" step="1" value="8" />
         <span id="vBrush">8</span>px</label>
       <label>similarity <input id="sSim" type="range" min="0" max="120" step="1" value="20" />
@@ -63,7 +57,14 @@
       <label>reach <input id="sReach" type="range" min="0" max="200" step="1" value="30" />
         <span id="vReach">30</span>px</label>
       <span id="status" class="status"></span>
-    </footer>
+    </div>
+
+    <!-- 描画エリア -->
+    <main id="stage">
+      <canvas id="view"></canvas>
+      <div id="hint">「画像を読込」でキーフレーム(frame_*.png)と背景を選択。<br />
+        Apple Pencilで描画 / 指でズーム・移動。</div>
+    </main>
   </div>
 
   <!-- 複数ファイル選択（非表示） -->
