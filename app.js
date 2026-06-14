@@ -775,11 +775,11 @@
     fr.history.push(fr.mask.slice());
     if (fr.history.length > 20) fr.history.shift();
     const sm = state.autoSeed.mask;
-    if (state.addMode) { for (let i = 0; i < sm.length; i++) { if (sm[i]) fr.mask[i] = 1; } }
-    else { for (let i = 0; i < sm.length; i++) { if (sm[i]) fr.mask[i] = 0; } }
+    // Auto(link)の「適用」は ADD/REMOVE モードに関わらず常にマスクへ追加（union）する
+    for (let i = 0; i < sm.length; i++) { if (sm[i]) fr.mask[i] = 1; }
     clearAutoSeed();
     repaintMask(); render(); autosave(fr); updateFrameLabel();
-    setStatus(`自動シードを${state.addMode ? '追加' : '削除'}で適用（Undoで戻せます）`);
+    setStatus('自動シードを追加で適用（Undoで戻せます）');
   }
   function clearAutoSeed() { if (state.autoSeed) { state.autoSeed = null; render(); } }
 
