@@ -405,11 +405,94 @@
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
   }
 
+  // ── ZIP 取り込み（再開）─────────────────────────────────────
+  // エクスポート済みマスクZIP（manifest_<object>.json + *_mask.png）を読み、
+  // フレーム名で突合して IndexedDB へ書き戻す。現在対象のマスクは即時再描画。
+  // マスク PNG は現在フレーム解像度へ「最近傍」リサイズして2値化する
+  // （long_side 丸め差を吸収しつつ 0/1 をぼかさないため imageSmoothingEnabled=false）。
+  async function maskBinaryFromBlob(blob, targetW, targetH) {
+    const bmp = await createImageBitmap(blob);
+    const c = document.createElement('canvas'); c.width = targetW; c.height = targetH;
+    const cc = c.getContext('2d', { willReadFrequently: true });
+    cc.imageSmoothingEnabled = false;   // 2値マスクをぼかさない（最近傍リサイズ）
+    cc.drawImage(bmp, 0, 0, targetW, targetH);
+    if (bmp.close) bmp.close();
+    const id = cc.getImageData(0, 0, targetW, targetH);
+    return MaskIO.thresholdToMask(id.data, targetW * targetH, 127);
+  }
+
+  async function onImportZips(files) {
+    const list = [...files].filter((f) => /\.zip$/i.test(f.name));
+    if (!list.length) return;
+    if (!state.frames.length) { setStatus('先に「画像を読込」してください（再開は画像読込後）'); return; }
+    if (typeof JSZip === 'undefined') { setStatus('JSZip読込失敗（オンライン要）'); return; }
+    if (!state.packName) { setStatus('先に「背景」を読み込んでpack名を確定してから取り込んでください'); return; }
+
+    setStatus('ZIP解析中...');
+    const loadedNames = new Set(state.frames.map((f) => f.name));
+    const plan = [];          // {object, name, entry(JSZipオブジェクト)}
+    const unmatched = [];      // 現在の読込画像に存在しないフレーム名（has_mask:true のみ）
+
+    // Phase 1: 全ZIPを解析・検証（この段では IndexedDB へ一切書き込まない）
+    try {
+      for (const file of list) {
+        const zip = await JSZip.loadAsync(file);
+        const manifestPaths = Object.keys(zip.files)
+          .filter((p) => !zip.files[p].dir && /(^|\/)manifest_.+\.json$/i.test(p));
+        if (!manifestPaths.length) { setStatus(`manifestが見つかりません: ${file.name}`); return; }
+        for (const mp of manifestPaths) {
+          const man = MaskIO.parseManifest(await zip.file(mp).async('string'));
+          const dir = mp.replace(/[^/]+$/, '');   // manifest と同じ階層を mask の基準に
+          for (const fr of man.frames) {
+            if (!fr.has_mask) continue;             // 未注釈フレームは取り込まない（既存維持）
+            if (!loadedNames.has(fr.file)) { unmatched.push(fr.file); continue; }
+            const entry = zip.file(fr.mask) || zip.file(dir + fr.mask);
+            if (!entry) { setStatus(`マスクPNGが欠落: ${fr.mask}（${file.name}）`); return; }
+            plan.push({ object: man.object, name: fr.file, entry });
+          }
+        }
+      }
+    } catch (err) {
+      setStatus('ZIP解析エラー: ' + err.message); return;
+    }
+
+    // 未マッチが1件でもあれば中止（部分取り込みはしない）
+    if (unmatched.length) {
+      const head = unmatched.slice(0, 3).join(', ');
+      const more = unmatched.length > 3 ? ' ...' : '';
+      setStatus(`中止: ${unmatched.length}件のマスクが現在の画像と未マッチ (${head}${more})。同じキーフレームを読み込んでから再試行してください`);
+      return;
+    }
+    if (!plan.length) { setStatus('取り込めるマスクがありません（has_mask が全て false）'); return; }
+
+    // Phase 2: 検証通過後にのみ デコード→リサイズ→IndexedDB 書込
+    setStatus(`取込中... (${plan.length}枚)`);
+    const frByName = new Map(state.frames.map((f) => [f.name, f]));
+    const objects = new Set();
+    try {
+      for (const p of plan) {
+        const tf = frByName.get(p.name);
+        const blob = await p.entry.async('blob');
+        const data = await maskBinaryFromBlob(blob, tf.W, tf.H);
+        // 同じ datasetKey 名前空間。manifest の object（現在の選択と異なってよい）へ書く。
+        await idbPut(`${state.datasetKey}::${p.object}::${p.name}`, { W: tf.W, H: tf.H, data });
+        objects.add(p.object);
+      }
+    } catch (err) {
+      setStatus('取込エラー: ' + err.message); return;
+    }
+    // 現在対象は IndexedDB から再読込して即時反映。他対象は switchObject で復元される。
+    await restoreMasks(); rebuildOverlays(); updateFrameLabel();
+    setStatus(`取込完了: ${plan.length}枚 / 対象 ${[...objects].join(',')}（上書き）`);
+  }
+
   // ── UI 配線 ──────────────────────────────────────────────
   $('btnLoadFrames').onclick = () => $('fileFrames').click();
   $('btnLoadBg').onclick = () => $('fileBg').click();
   $('fileFrames').onchange = (e) => onLoadFrames(e.target.files);
   $('fileBg').onchange = (e) => { if (e.target.files[0]) onLoadBg(e.target.files[0]); };
+  $('btnImport').onclick = () => $('fileImport').click();
+  $('fileImport').onchange = (e) => { onImportZips(e.target.files); e.target.value = ''; };
 
   $('packName').onchange = (e) => setPackName(e.target.value);
   $('objSelect').onchange = (e) => switchObject(e.target.value);

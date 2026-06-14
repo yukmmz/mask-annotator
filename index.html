@@ -17,6 +17,7 @@
         <button id="btnLoadFrames" class="primary">画像を読込</button>
         <button id="btnLoadBg">背景</button>
         <span id="bgState" class="tag off">bg:なし</span>
+        <button id="btnImport">マスク読込</button>
       </div>
 
       <div class="group">
@@ -70,10 +71,13 @@
   <!-- 複数ファイル選択（非表示） -->
   <input id="fileFrames" type="file" accept="image/*" multiple hidden />
   <input id="fileBg" type="file" accept="image/*" hidden />
+  <!-- マスクZIP取り込み（再開） -->
+  <input id="fileImport" type="file" accept=".zip" multiple hidden />
 
   <!-- JSZip（ZIP生成）。MVP1はCDN、MVP2でオフライン用にvendor化予定 -->
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script src="brush.js"></script>
+  <script src="mask_io.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
