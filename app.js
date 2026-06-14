@@ -884,6 +884,14 @@
   // 上部バーの折りたたみ
   $('btnChrome').onclick = () => setChromeCollapsed(!chromeCollapsed);
 
+  // 「その他」オーバーフローメニュー（低頻度ボタン）
+  function closeMore() { const m = $('moreMenu'); if (m && !m.hidden) m.hidden = true; }
+  $('btnMore').onclick = () => { const m = $('moreMenu'); m.hidden = !m.hidden; };
+  $('moreMenu').addEventListener('click', (e) => { if (e.target.closest('button')) closeMore(); });
+  document.addEventListener('pointerdown', (e) => {
+    if (!$('moreMenu').hidden && !e.target.closest('.menu-wrap')) closeMore();
+  });
+
   // 翼3点モード
   $('btn3pt').onclick = enterThreePoint;
   $('btn3ptUndo').onclick = undoThreePoint;
