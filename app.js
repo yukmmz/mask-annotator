@@ -26,6 +26,7 @@
     idx: 0,
     object: 'robot',
     addMode: true,
+    lassoOutside: false,   // 外側選択（なげなわ）モード。ON中はPencilで囲って外側をADD/REMOVE
     showDiff: false,
     brushPx: 8, similarity: 20, reach: 30,
     packName: '',      // データセット名（ZIP名・IndexedDB名前空間に使用）
@@ -317,6 +318,8 @@
   let drawing = false, drawId = null, stroke = null, lastXY = null;
   // コピー移動/回転モードのドラッグ状態
   let movingMask = false, rotatingMask = false, tformPointerId = null, tformStartVals = null;
+  // 外側選択（なげなわ）モードのドラッグ状態。state.lassoOutside がトグルON/OFF。
+  let lassoing = false, lassoId = null, lassoPts = [];
   // 上部バーの折りたたみ（画像面積を最大化）。クイックバー(頻用コントロール)は畳まず常時表示。
   let chromeCollapsed = false;
   function setChromeCollapsed(v) {
@@ -404,10 +407,15 @@
         }
         e.preventDefault(); return;
       }
+      if (state.lassoOutside) {         // 外側選択: Pencilでなぞって範囲を囲む
+        lassoing = true; lassoId = e.pointerId; view.setPointerCapture(e.pointerId);
+        const w = toWorld(p.x, p.y); lassoPts = [[w.x, w.y]];
+        drawLassoPreview(); e.preventDefault(); return;
+      }
       drawing = true; drawId = e.pointerId; view.setPointerCapture(e.pointerId);
       startStroke(p.x, p.y); e.preventDefault();
     } else { // touch
-      if (drawing || movingMask || rotatingMask) return;  // ペン操作中の手のひら等は無視
+      if (drawing || movingMask || rotatingMask || lassoing) return;  // ペン操作中の手のひら等は無視
       touches.set(e.pointerId, p);
       gesturePrev = null;
     }
@@ -425,6 +433,10 @@
       }
       render(); e.preventDefault(); return;
     }
+    if (lassoing && e.pointerId === lassoId) {
+      const w = toWorld(p.x, p.y); lassoPts.push([w.x, w.y]);
+      drawLassoPreview(); e.preventDefault(); return;
+    }
     if (drawing && e.pointerId === drawId) { stampPath(p.x, p.y); e.preventDefault(); return; }
     if (touches.has(e.pointerId)) {
       touches.set(e.pointerId, p);
@@ -434,6 +446,10 @@
   function endPointer(e) {
     if ((movingMask || rotatingMask) && e.pointerId === tformPointerId) {
       movingMask = false; rotatingMask = false; tformPointerId = null; tformStartVals = null; return;
+    }
+    if (lassoing && e.pointerId === lassoId) {
+      lassoing = false; lassoId = null;
+      applyLassoOutside(lassoPts); lassoPts = []; return;
     }
     if (drawing && e.pointerId === drawId) { commitStroke(); drawing = false; drawId = null; return; }
     if (touches.has(e.pointerId)) { touches.delete(e.pointerId); gesturePrev = null; }
@@ -650,6 +666,7 @@
 
   function enterTransformMode(srcMask, srcW, srcH) {
     clearAutoSeed();   // 非モーダルな自動シードプレビューが残っていれば消す
+    setLassoOutside(false);
     revealChrome();    // 確定/取消が見えるよう、畳まれていれば展開
     const b = MaskTransform.bboxCenter(srcMask, srcW, srcH);
     state.transform = {
@@ -691,6 +708,7 @@
     if (!state.frames.length) { setStatus('画像が未読込'); return; }
     if (state.object !== 'wing') { setStatus('3点(翼)モードは対象=wingで使います（対象をwingに）'); return; }
     clearAutoSeed();
+    setLassoOutside(false);
     revealChrome();
     state.threePoint = { center: null, tip: null, trailing: null, previewCanvas: null };
     $('threePointBar').hidden = false;
@@ -783,6 +801,56 @@
   }
   function clearAutoSeed() { if (state.autoSeed) { state.autoSeed = null; render(); } }
 
+  // ── 外側選択（なげなわ）: 囲んだ範囲の外側を ADD/REMOVE ─────────
+  function setLassoOutside(on) {
+    state.lassoOutside = on;
+    const b = $('btnLasso');
+    if (b) b.classList.toggle('lasso-on', on);
+    if (!on && lassoing) { lassoing = false; lassoId = null; lassoPts = []; clearStrokeCanvas(); render(); }
+  }
+  function toggleLassoOutside() {
+    if (modalBusy()) { setStatus('編集モード中です。先に確定/取消してください'); return; }
+    setLassoOutside(!state.lassoOutside);
+    setStatus(state.lassoOutside
+      ? ' 外側選択ON: Pencilで囲むと外側を' + (state.addMode ? '追加' : '削除') + '（OFFで通常ブラシ）'
+      : '外側選択OFF');
+  }
+
+  // ドラッグ中のなげなわ輪郭を strokeCanvas に描く（終点→始点を結んで閉じた形を表示）
+  function drawLassoPreview() {
+    const fr = curFrame(); if (!fr || !strokeCtx) return;
+    ensureOverlayCanvases(fr.W, fr.H);
+    strokeCtx.clearRect(0, 0, strokeCanvas.width, strokeCanvas.height);
+    if (lassoPts.length >= 1) {
+      const col = state.addMode ? PURPLE : ORANGE;
+      strokeCtx.save();
+      strokeCtx.strokeStyle = `rgba(${col[0]},${col[1]},${col[2]},0.9)`;
+      strokeCtx.lineWidth = Math.max(0.5, 2 / state.cam.scale);
+      strokeCtx.beginPath();
+      strokeCtx.moveTo(lassoPts[0][0], lassoPts[0][1]);
+      for (let i = 1; i < lassoPts.length; i++) strokeCtx.lineTo(lassoPts[i][0], lassoPts[i][1]);
+      strokeCtx.closePath();   // 終点→始点（自動クローズ）を可視化
+      strokeCtx.stroke();
+      strokeCtx.restore();
+    }
+    render();
+  }
+
+  function applyLassoOutside(pts) {
+    const fr = curFrame(); if (!fr) return;
+    clearStrokeCanvas();
+    if (pts.length < 3) { render(); setStatus('範囲が小さすぎます（もっと大きく囲む）'); return; }
+    const inside = Lasso.polygonFillMask(pts, fr.W, fr.H);
+    let nin = 0; for (let i = 0; i < inside.length; i++) nin += inside[i];
+    if (nin === 0) { render(); setStatus('範囲を囲めませんでした'); return; }
+    fr.history.push(fr.mask.slice());            // Undo で戻せるよう退避
+    if (fr.history.length > 20) fr.history.shift();
+    if (state.addMode) { for (let i = 0; i < inside.length; i++) { if (!inside[i]) fr.mask[i] = 1; } }
+    else { for (let i = 0; i < inside.length; i++) { if (!inside[i]) fr.mask[i] = 0; } }
+    repaintMask(); render(); autosave(fr); updateFrameLabel();
+    setStatus(`囲んだ範囲の外側を${state.addMode ? '追加' : '削除'}（Undoで戻せます）`);
+  }
+
   // ── UI 配線 ──────────────────────────────────────────────
   $('btnLoadFrames').onclick = () => $('fileFrames').click();
   $('btnLoadBg').onclick = () => $('fileBg').click();
@@ -832,6 +900,7 @@
   $('btnClear').onclick = clearFrame;
   $('btnDiff').onclick = () => { state.showDiff = !state.showDiff; render(); };
   $('btnFit').onclick = () => { fitView(); render(); };
+  $('btnLasso').onclick = toggleLassoOutside;
   $('btnExport').onclick = exportZip;
 
   $('sBrush').oninput = (e) => { state.brushPx = +e.target.value; $('vBrush').textContent = e.target.value; };
