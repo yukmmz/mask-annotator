@@ -317,6 +317,16 @@
   let drawing = false, drawId = null, stroke = null, lastXY = null;
   // コピー移動/回転モードのドラッグ状態
   let movingMask = false, rotatingMask = false, tformPointerId = null, tformStartVals = null;
+  // 上部バーの折りたたみ（画像面積を最大化）
+  let chromeCollapsed = false;
+  function setChromeCollapsed(v) {
+    chromeCollapsed = v;
+    $('app').classList.toggle('collapsed', v);
+    $('btnChrome').textContent = v ? 'メニュー ▼' : '隠す ▲';
+    resizeView();   // キャンバス実寸を測り直して再描画（カメラはそのまま）
+  }
+  // モード（移動/回転・翼3点・Auto）に入った時、畳まれていれば展開して操作ボタンを見せる
+  function revealChrome() { if (chromeCollapsed) setChromeCollapsed(false); }
 
   function startStroke(cx, cy) {
     const fr = curFrame(); if (!fr) return;
@@ -640,6 +650,7 @@
 
   function enterTransformMode(srcMask, srcW, srcH) {
     clearAutoSeed();   // 非モーダルな自動シードプレビューが残っていれば消す
+    revealChrome();    // 確定/取消が見えるよう、畳まれていれば展開
     const b = MaskTransform.bboxCenter(srcMask, srcW, srcH);
     state.transform = {
       srcMask, srcW, srcH,
@@ -680,6 +691,7 @@
     if (!state.frames.length) { setStatus('画像が未読込'); return; }
     if (state.object !== 'wing') { setStatus('3点(翼)モードは対象=wingで使います（対象をwingに）'); return; }
     clearAutoSeed();
+    revealChrome();
     state.threePoint = { center: null, tip: null, trailing: null, previewCanvas: null };
     $('threePointBar').hidden = false;
     setStatus('翼3点: center をPencilでタップ（順: center→tip→trailing）');
@@ -744,8 +756,8 @@
   function toggleAutoPanel() {
     const bar = $('autoBar');
     bar.hidden = !bar.hidden;
-    if (bar.hidden) clearAutoSeed();   // 閉じたらプレビューを破棄
-    else setStatus('Auto(link): スライダ調整 →「Auto実行」で現フレームのシードを計算');
+    if (bar.hidden) { clearAutoSeed(); }   // 閉じたらプレビューを破棄
+    else { revealChrome(); setStatus('Auto(link): スライダ調整 →「Auto実行」で現フレームのシードを計算'); }
   }
   function runAutoSeed() {
     if (modalBusy()) { setStatus('編集モード中です。先に確定/取消してください'); return; }
@@ -788,6 +800,9 @@
   $('btnCopyPrev').onclick = copyPrevMask;
   $('btnTransformApply').onclick = applyTransform;
   $('btnTransformCancel').onclick = cancelTransform;
+
+  // 上部バーの折りたたみ
+  $('btnChrome').onclick = () => setChromeCollapsed(!chromeCollapsed);
 
   // 翼3点モード
   $('btn3pt').onclick = enterThreePoint;
