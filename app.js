@@ -328,6 +328,8 @@
   let movingMask = false, rotatingMask = false, tformPointerId = null, tformStartVals = null;
   // 外側選択（なげなわ）モードのドラッグ状態。state.lassoOutside がトグルON/OFF。
   let lassoing = false, lassoId = null, lassoPts = [];
+  // 翼3点モードで点をドラッグ調整中のキー（'center'|'tip'|'trailing'）と pointerId
+  let threeDrag = null, threeDragId = null;
   // 上部バーの折りたたみ（画像面積を最大化）。クイックバー(頻用コントロール)は畳まず常時表示。
   let chromeCollapsed = false;
   function setChromeCollapsed(v) {
@@ -397,8 +399,14 @@
   view.addEventListener('pointerdown', (e) => {
     const p = clientToLocal(e.clientX, e.clientY);
     if (e.pointerType === 'pen' || e.pointerType === 'mouse') {
-      if (state.threePoint) {          // 翼3点モード: Pencilタップで center→tip→trailing を配置
-        placeThreePoint(toWorld(p.x, p.y)); e.preventDefault(); return;
+      if (state.threePoint) {          // 翼3点モード: 点の近くなら掴んで調整、なければ次の点を配置
+        const w = toWorld(p.x, p.y);
+        let key = nearestThreePoint(p.x, p.y);   // 既存点の近く?（画面距離で判定）
+        if (!key) key = placeThreePoint(w);       // 空きスロットへ配置（戻り値=置いたキー）
+        if (key) {                                // 置いた/掴んだ点をそのままドラッグ調整可能に
+          threeDrag = key; threeDragId = e.pointerId; view.setPointerCapture(e.pointerId);
+        }
+        e.preventDefault(); return;
       }
       if (state.transform) {           // 移動/回転モード: Pencil=移動 or ハンドル=回転
         tformPointerId = e.pointerId; view.setPointerCapture(e.pointerId);
@@ -426,7 +434,7 @@
       drawing = true; drawId = e.pointerId; view.setPointerCapture(e.pointerId);
       startStroke(p.x, p.y); e.preventDefault();
     } else { // touch
-      if (drawing || movingMask || rotatingMask || lassoing) return;  // ペン操作中の手のひら等は無視
+      if (drawing || movingMask || rotatingMask || lassoing || threeDrag) return;  // ペン操作中の手のひら等は無視
       touches.set(e.pointerId, p);
       gesturePrev = null;
     }
@@ -444,6 +452,11 @@
       }
       render(); e.preventDefault(); return;
     }
+    if (threeDrag && e.pointerId === threeDragId) {
+      const w = toWorld(p.x, p.y);
+      state.threePoint[threeDrag] = [w.x, w.y];
+      recomputeThreePointPreview(); render(); e.preventDefault(); return;
+    }
     if (lassoing && e.pointerId === lassoId) {
       const w = toWorld(p.x, p.y); lassoPts.push([w.x, w.y]);
       drawLassoPreview(); e.preventDefault(); return;
@@ -455,6 +468,16 @@
     }
   });
   function endPointer(e) {
+    if (threeDrag && e.pointerId === threeDragId) {
+      threeDrag = null; threeDragId = null;
+      const tp = state.threePoint;
+      if (tp) {
+        const next = WingEllipse.POINT_ORDER.find((k) => tp[k] == null);
+        setStatus(next ? `次の点: ${next} をタップ（点の近くからドラッグで調整可）`
+                       : '3点配置完了 → 確定（点をドラッグで微調整可）');
+      }
+      return;
+    }
     if ((movingMask || rotatingMask) && e.pointerId === tformPointerId) {
       movingMask = false; rotatingMask = false; tformPointerId = null; tformStartVals = null; return;
     }
@@ -741,15 +764,30 @@
     }
   }
   function placeThreePoint(w) {
-    const tp = state.threePoint; if (!tp) return;
+    const tp = state.threePoint; if (!tp) return null;
     const order = WingEllipse.POINT_ORDER;
     const idx = order.findIndex((k) => tp[k] == null);
-    if (idx === -1) { setStatus('3点配置済み。確定 / 1点戻す / クリア'); return; }
+    if (idx === -1) { setStatus('3点配置済み（点をドラッグで調整 / 確定 / クリア）'); return null; }
     tp[order[idx]] = [w.x, w.y];
     recomputeThreePointPreview();
     const next = order.findIndex((k) => tp[k] == null);
-    setStatus(next === -1 ? '3点配置完了 → 確定 で塗る' : `次の点: ${order[next]} をタップ`);
+    setStatus(next === -1 ? '3点配置完了 → 確定（点をドラッグで微調整可）' : `次の点: ${order[next]} をタップ`);
     render();
+    return order[idx];
+  }
+
+  // ポインタ(画面css座標)に最も近い既存の点キーを返す（しきい値内のみ。ドラッグ調整の掴み判定）。
+  function nearestThreePoint(cx, cy) {
+    const tp = state.threePoint; if (!tp) return null;
+    const scale = state.cam.scale;
+    let best = null, bestD = 22;   // 掴める画面距離(px)。マーカー半径7+余白
+    for (const k of WingEllipse.POINT_ORDER) {
+      const pt = tp[k]; if (!pt) continue;
+      const sx = pt[0] * scale + state.cam.tx, sy = pt[1] * scale + state.cam.ty;
+      const d = Math.hypot(cx - sx, cy - sy);
+      if (d <= bestD) { bestD = d; best = k; }
+    }
+    return best;
   }
   function undoThreePoint() {
     const tp = state.threePoint; if (!tp) return;
@@ -778,7 +816,10 @@
     repaintMask(); clearStrokeCanvas(); render(); autosave(fr); updateFrameLabel();
     setStatus('翼楕円を確定（ADD/REMOVEで調整できます）');
   }
-  function exitThreePoint() { state.threePoint = null; $('threePointBar').hidden = true; }
+  function exitThreePoint() {
+    state.threePoint = null; threeDrag = null; threeDragId = null;
+    $('threePointBar').hidden = true;
+  }
   function cancelThreePoint() {
     if (!state.threePoint) return;
     exitThreePoint();
