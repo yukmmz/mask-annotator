@@ -264,13 +264,14 @@
     }
     const order = WingEllipse.POINT_ORDER;       // center→tip→trailing
     const colors = { center: '#ff3b30', tip: '#ffcc00', trailing: '#ff2d95' };
-    const r = 7 / scale;
+    const r = 9 / scale;
     for (const k of order) {
       const pt = tp[k]; if (!pt) continue;
+      const dragging = (threeDrag === k);
       ctx.save();
-      ctx.beginPath(); ctx.arc(pt[0], pt[1], r, 0, Math.PI * 2);
+      ctx.beginPath(); ctx.arc(pt[0], pt[1], (dragging ? r + 2 / scale : r), 0, Math.PI * 2);
       ctx.fillStyle = colors[k]; ctx.fill();
-      ctx.lineWidth = 1.5 / scale; ctx.strokeStyle = '#fff'; ctx.stroke();
+      ctx.lineWidth = 2 / scale; ctx.strokeStyle = '#fff'; ctx.stroke();
       ctx.restore();
     }
   }
@@ -780,7 +781,7 @@
   function nearestThreePoint(cx, cy) {
     const tp = state.threePoint; if (!tp) return null;
     const scale = state.cam.scale;
-    let best = null, bestD = 22;   // 掴める画面距離(px)。マーカー半径7+余白
+    let best = null, bestD = 32;   // 掴める画面距離(px)。角に来るcenterも掴みやすいよう広め
     for (const k of WingEllipse.POINT_ORDER) {
       const pt = tp[k]; if (!pt) continue;
       const sx = pt[0] * scale + state.cam.tx, sy = pt[1] * scale + state.cam.ty;
@@ -931,13 +932,20 @@
   $('fileImport').onchange = (e) => { onImportZips(e.target.files); e.target.value = ''; };
 
   $('packName').onchange = (e) => setPackName(e.target.value);
-  $('objInput').onchange = (e) => {
+  function applyObjectFromInput() {
+    const inp = $('objInput');
     // 編集モード中の対象変更はブロックし、入力を元に戻す
-    if (modalBusy()) { setStatus('編集モード中です。先に確定/取消してください'); e.target.value = state.object; return; }
-    const v = sanitizeObject(e.target.value);   // 安全な文字のみに正規化
-    e.target.value = v;
+    if (modalBusy()) { setStatus('編集モード中です。先に確定/取消してください'); inp.value = state.object; return; }
+    const v = sanitizeObject(inp.value);   // 安全な文字のみに正規化
+    inp.value = v;
     switchObject(v);
-  };
+  }
+  $('objInput').onchange = applyObjectFromInput;     // フォーカスアウト時の確定
+  // Enter / OKボタンで確定し、キーボードを閉じる（iOSは blur しないとキーボードが残る）
+  $('objInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); applyObjectFromInput(); $('objInput').blur(); }
+  });
+  $('btnObjOK').onclick = () => { applyObjectFromInput(); $('objInput').blur(); };
   $('btnCopyPrev').onclick = copyPrevMask;
   $('btnTransformApply').onclick = applyTransform;
   $('btnTransformCancel').onclick = cancelTransform;
