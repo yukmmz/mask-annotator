@@ -578,6 +578,7 @@
     $('frameLabel').textContent = fr
       ? `${state.idx + 1}/${state.frames.length} (${done}✓)`
       : '- / -';
+    $('frameName').textContent = fr ? fr.name : '';   // キャンバス左上に表示中の画像名
   }
   function setStatus(s) { $('status').textContent = s; }
 

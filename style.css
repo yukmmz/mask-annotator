@@ -116,6 +116,14 @@ label { display: flex; align-items: center; gap: 6px; }
   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
   color: #888; text-align: center; font-size: 15px; line-height: 1.7; pointer-events: none;
 }
+/* 現在表示中フレームのファイル名（キャンバス左上に小さく重ねる） */
+.frame-name {
+  position: absolute; z-index: 15; top: 8px; left: 8px;
+  max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 3px 8px; font-size: 12px; border-radius: 6px;
+  background: rgba(27, 29, 33, 0.7); color: var(--fg); pointer-events: none;
+}
+.frame-name:empty { display: none; }
 
 /* ── スライダー ───────────────────────────── */
 #quickbar label { gap: 8px; }
