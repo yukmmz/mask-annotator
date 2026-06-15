@@ -61,6 +61,8 @@
 
   // 対象名: 安全な文字（英数・_・-）のみ許可。ファイル名/manifest名に使うため。
   function sanitizeObject(s) { return (s || '').trim().replace(/[^A-Za-z0-9_-]/g, ''); }
+  // pack名(ZIPファイル名の接頭辞): ファイル名に使えない文字だけ除く（自由入力寄り）。
+  function sanitizePack(s) { return (s || '').trim().replace(/[/\\:*?"<>|\x00-\x1f]/g, ''); }
   function objectReady() { return !!state.object; }   // 未入力ならマスク作成/出力を禁止
   function updateObjEmptyCue() {
     const inp = $('objInput'); if (inp) inp.classList.toggle('required-empty', !state.object);
@@ -106,6 +108,26 @@
       const t = db.transaction('masks', 'readonly');
       const rq = t.objectStore('masks').get(key);
       rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error);
+    });
+  }
+  // 接頭辞 oldPrefix で始まる全キーを newPrefix 始まりへ移送（pack名変更で作業を失わないため）。
+  async function idbMigratePrefix(oldPrefix, newPrefix) {
+    const db = await idb();
+    return new Promise((res, rej) => {
+      const t = db.transaction('masks', 'readwrite');
+      const store = t.objectStore('masks');
+      const rq = store.openCursor();
+      rq.onsuccess = () => {
+        const c = rq.result;
+        if (!c) return;
+        const k = c.key;
+        if (typeof k === 'string' && k.startsWith(oldPrefix)) {
+          store.put(c.value, newPrefix + k.slice(oldPrefix.length));
+          c.delete();   // move（旧キー削除）
+        }
+        c.continue();
+      };
+      t.oncomplete = () => res(); t.onerror = () => rej(t.error);
     });
   }
   const maskKey = (name) => `${state.datasetKey}::${state.object}::${name}`;
@@ -162,9 +184,20 @@
   }
 
   async function setPackName(name) {
-    state.packName = (name || '').trim();
-    const inp = $('packName'); if (inp && inp.value !== state.packName) inp.value = state.packName;
+    const newPack = sanitizePack(name);
+    const inp = $('packName');
+    if (newPack === state.packName) {           // 変更なし（表示だけ正規化）
+      if (inp && inp.value !== state.packName) inp.value = state.packName;
+      return;
+    }
+    const oldKey = state.datasetKey;            // 旧名前空間（pack変更前）
+    state.packName = newPack;
+    if (inp && inp.value !== state.packName) inp.value = state.packName;
     state.datasetKey = computeDatasetKey();
+    // 既に描いたマスクを旧→新の名前空間へ移送（pack をいつ変えても作業が消えない）
+    if (state.frames.length && oldKey && oldKey !== state.datasetKey) {
+      try { await idbMigratePrefix(oldKey + '::', state.datasetKey + '::'); } catch (_) { /* noop */ }
+    }
     if (state.frames.length) { await restoreMasks(); rebuildOverlays(); updateFrameLabel(); }
   }
 
@@ -931,7 +964,12 @@
   $('btnImport').onclick = () => $('fileImport').click();
   $('fileImport').onchange = (e) => { onImportZips(e.target.files); e.target.value = ''; };
 
-  $('packName').onchange = (e) => setPackName(e.target.value);
+  function applyPackFromInput() { setPackName($('packName').value); }
+  $('packName').onchange = applyPackFromInput;
+  $('packName').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); applyPackFromInput(); $('packName').blur(); }
+  });
+  $('btnPackOK').onclick = () => { applyPackFromInput(); $('packName').blur(); };
   function applyObjectFromInput() {
     const inp = $('objInput');
     // 編集モード中の対象変更はブロックし、入力を元に戻す
