@@ -1000,6 +1000,12 @@
     if (!$('moreMenu').hidden && !e.target.closest('.menu-wrap')) closeMore();
   });
 
+  // アプリ名＋バージョン（ツールバー最右に表示）。ここが単一情報源。
+  // 反映確認の curl ポーリングは APP_VERSION の文字列を grep する。
+  const APP_NAME = 'mask-annotator';
+  const APP_VERSION = '1.0.0';
+  $('appVersion').textContent = APP_NAME + ' v' + APP_VERSION;
+
   // QR表示（アプリURL/ソースURLを読取れるQRで提示）。QR画像はこれらの固定URLを
   // エンコード済み（scratch/gen_qr.py で生成）。表示テキストも同一に保つ。
   const QR_APP_URL = 'https://yukmmz.github.io/mask-annotator/';

@@ -36,6 +36,11 @@ html, body {
 /* 折りたたみ時はクイックバーが最上段になるので safe-area を付与 */
 #app.collapsed #quickbar { padding-top: max(6px, env(safe-area-inset-top)); }
 .group { display: flex; align-items: center; gap: 6px; }
+/* アプリ名＋バージョン: ツールバー最右へ寄せる小さなラベル（操作対象ではない） */
+.app-version {
+  margin-left: auto; color: #9aa0a8; font-size: 12px;
+  white-space: nowrap; user-select: none; padding: 0 2px;
+}
 
 button, select {
   font-size: 14px; color: var(--fg); background: var(--panel2);
