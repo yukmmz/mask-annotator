@@ -1000,6 +1000,18 @@
     if (!$('moreMenu').hidden && !e.target.closest('.menu-wrap')) closeMore();
   });
 
+  // QR表示（アプリURL/ソースURLを読取れるQRで提示）。QR画像はこれらの固定URLを
+  // エンコード済み（scratch/gen_qr.py で生成）。表示テキストも同一に保つ。
+  const QR_APP_URL = 'https://yukmmz.github.io/mask-annotator/';
+  const QR_SRC_URL = 'https://github.com/yukmmz/mask-annotator';
+  $('qrUrl').textContent = QR_APP_URL;
+  $('qrSrcUrl').textContent = QR_SRC_URL;
+  $('btnQR').onclick = () => { $('qrOverlay').hidden = false; };
+  $('qrClose').onclick = () => { $('qrOverlay').hidden = true; };
+  $('qrOverlay').addEventListener('click', (e) => {
+    if (e.target === $('qrOverlay')) $('qrOverlay').hidden = true;  // 背景タップで閉じる
+  });
+
   // 翼3点モード
   $('btn3pt').onclick = enterThreePoint;
   $('btn3ptUndo').onclick = undoThreePoint;

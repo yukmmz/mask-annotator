@@ -43,6 +43,7 @@
             <button id="btnAuto">Auto(link)</button>
             <button id="btnClear">Clear</button>
             <button id="btnDiff">Diff表示</button>
+            <button id="btnQR">QR表示</button>
           </div>
         </span>
       </div>
@@ -114,6 +115,25 @@
       <div id="frameName" class="frame-name"></div>
       <button id="btnChrome" class="chrome-toggle" type="button">隠す &#9650;</button>
     </main>
+  </div>
+
+  <!-- QRオーバーレイ: アプリURL（左）とソースリポジトリURL（右）を読取れるQRで表示 -->
+  <div id="qrOverlay" hidden>
+    <div class="qrcard">
+      <div class="qrrow">
+        <div class="qrcol">
+          <div class="qrlabel">App</div>
+          <img class="qrImg" src="qr.svg" alt="QR code for the app URL" />
+          <div class="qrurl" id="qrUrl"></div>
+        </div>
+        <div class="qrcol">
+          <div class="qrlabel">Source</div>
+          <img class="qrImg" src="src-qr.svg" alt="QR code for the source repository" />
+          <div class="qrurl" id="qrSrcUrl"></div>
+        </div>
+      </div>
+      <button id="qrClose" class="primary">閉じる</button>
+    </div>
   </div>
 
   <!-- 複数ファイル選択（非表示） -->
