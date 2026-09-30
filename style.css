@@ -7,6 +7,9 @@
   --add: #3aa757;
   --rem: #d2691e;
   --tag: #444a54;
+  --border: #4a4f57;
+  --muted: #9aa3ae;
+  --danger: #ff6b6b;
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -36,11 +39,20 @@ html, body {
 /* 折りたたみ時はクイックバーが最上段になるので safe-area を付与 */
 #app.collapsed #quickbar { padding-top: max(6px, env(safe-area-inset-top)); }
 .group { display: flex; align-items: center; gap: 6px; }
-/* アプリ名＋バージョン: ツールバー最右へ寄せる小さなラベル（操作対象ではない） */
-.app-version {
-  margin-left: auto; color: #9aa0a8; font-size: 12px;
-  white-space: nowrap; user-select: none; padding: 0 2px;
+/* App name + version: the same look in every yukmmz.github.io app (toolbar left end). */
+.app-brand {
+  display: flex; align-items: baseline; gap: .45em;
+  white-space: nowrap; margin-right: 8px;
 }
+.app-title {
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", "Segoe UI", Roboto, sans-serif;
+  font-size: 16px; font-weight: 700; margin: 0; letter-spacing: .02em;
+  line-height: 1.2; white-space: nowrap;
+}
+.app-version {
+  font-size: 11px; font-weight: 400; opacity: .55; white-space: nowrap; cursor: pointer;
+}
+.app-version:hover { text-decoration: underline; }
 
 button, select {
   font-size: 14px; color: var(--fg); background: var(--panel2);
@@ -114,26 +126,108 @@ label { display: flex; align-items: center; gap: 6px; }
 #moreMenu label { width: 100%; }
 #moreMenu input[type=text] { width: 100%; flex: 1; }
 
-/* ── QRオーバーレイ（アプリ/ソースのQRを表示） ───────────── */
-#qrOverlay {
+/* ── Common header controls: ⛶ full screen and ⚙ settings (toolbar right end) ── */
+#toolbar .tb-right { margin-left: auto; }
+.btn-icon {
+  width: 36px; height: 36px; min-height: 36px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--muted); font-size: 20px; line-height: 1; flex: 0 0 auto;
+}
+/* The gear is the one control that must read at a glance. */
+#settings-btn { font-size: 2.1rem; overflow: visible; }
+#fullscreen-btn { font-size: 1.5rem; }
+#fullscreen-btn[hidden] { display: none; }
+
+/* ── Settings sheet (centered modal + backdrop; same as the other apps) ── */
+/* body has touch-action:none for the canvas; the sheet and lists must still
+   scroll with a finger, so they opt back in to vertical panning. */
+.backdrop {
+  position: fixed; inset: 0; z-index: 70;
+  background: rgba(0, 0, 0, 0.55);
+}
+.sheet {
+  position: fixed; z-index: 75; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(440px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow-y: auto; -webkit-overflow-scrolling: touch;
+  touch-action: pan-y; overscroll-behavior: contain;
+  background: var(--panel); color: var(--fg);
+  border: 1px solid var(--border); border-radius: 16px;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.5);
+  padding: 16px;
+}
+.sheet-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; margin-bottom: 8px;
+}
+.sheet-title { font-size: 16px; margin: 0; }
+.sheet-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 10px 0; border-top: 1px solid var(--border);
+}
+.sheet-label { font-size: 14px; }
+.sheet select { max-width: 60%; }
+.btn-danger { color: var(--danger); }
+/* A link styled as a button (「アプリ一覧を開く」). */
+a.linkbtn {
+  font-size: 14px; color: var(--fg); background: var(--panel2);
+  border: 1px solid var(--border); border-radius: 8px; padding: 5px 10px;
+  min-height: 34px; display: inline-flex; align-items: center; text-decoration: none;
+}
+a.linkbtn:active { filter: brightness(1.3); }
+
+/* ── QR / changelog overlays (dark card; the QR itself stays on white) ── */
+#qrOverlay, #changelogOverlay {
   position: fixed; inset: 0; z-index: 80; display: flex;
   align-items: center; justify-content: center;
   background: rgba(0, 0, 0, 0.72);
 }
-#qrOverlay[hidden] { display: none; }
 .qrcard {
-  background: #fff; color: #111; border-radius: 16px; padding: 20px;
+  background: var(--panel); color: var(--fg);
+  border: 1px solid var(--border); border-radius: 16px; padding: 20px;
   display: flex; flex-direction: column; align-items: center; gap: 14px;
-  max-width: 92vw;
+  max-width: min(640px, calc(100vw - 32px));
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.5);
 }
 .qrrow { display: flex; flex-direction: row; align-items: flex-start; gap: 24px; }
 .qrcol {
   display: flex; flex-direction: column; align-items: center; gap: 10px;
   flex: 1 1 0; min-width: 0;
 }
-.qrcard .qrImg { width: min(38vmin, 300px); height: auto; image-rendering: pixelated; }
-.qrcard .qrlabel { font-size: 15px; font-weight: 600; color: #111; }
-.qrcard .qrurl { font-size: 13px; color: #333; word-break: break-all; text-align: center; }
+.qrcard .qrImg {
+  width: min(38vmin, 260px); height: auto; image-rendering: pixelated;
+  background: #fff; padding: 8px; border-radius: 8px;
+}
+.qrcard .qrlabel { font-size: 15px; font-weight: 600; color: var(--muted); }
+.qrcard .qrurl { font-size: 13px; color: var(--muted); word-break: break-all; text-align: center; }
+
+.changelog-card {
+  width: min(520px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  align-items: stretch; gap: 0; text-align: left;
+}
+.changelog-title { font-size: 16px; margin: 0 0 8px; }
+.changelog-list {
+  overflow-y: auto; -webkit-overflow-scrolling: touch;
+  touch-action: pan-y; overscroll-behavior: contain;
+  flex: 1 1 auto; min-height: 0;
+}
+.changelog-entry + .changelog-entry {
+  border-top: 1px solid var(--border); margin-top: 8px; padding-top: 8px;
+}
+.changelog-version { font-size: 14px; margin: 0 0 4px; }
+.changelog-entry ul { margin: 0; padding-left: 1.2em; font-size: 13px; color: var(--muted); line-height: 1.5; }
+#changelogClose { margin-top: 12px; align-self: center; }
+
+/* A small dot on ⚙ and on the changelog button until the new version's
+   changelog has been opened once. */
+#settings-btn, #changelogBtn { position: relative; }
+#settings-btn.has-news::after,
+#changelogBtn.has-news::after {
+  content: ''; position: absolute; top: 2px; right: 2px;
+  width: 9px; height: 9px; border-radius: 50%; background: var(--danger);
+}
 
 /* ── 描画ステージ ───────────────────────────── */
 #stage { position: relative; flex: 1; overflow: hidden; background: #111; }

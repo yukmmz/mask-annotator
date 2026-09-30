@@ -20,6 +20,9 @@ iPad / Apple Pencil で動く、**ブラウザだけで完結するピクセル�
 - **外側選択（なげなわ）**: 「外側」をONにしてPencilで範囲を囲むと、囲んだ範囲の外側を
   まとめてADD/REMOVE（例: REMOVEで「囲んだ所だけ残す」）。Undoで戻せる。
 - **出力**: `<frame>_<object>_mask.png` ＋ `manifest_<object>.json` を ZIP で書き出し。
+- **日本語 / English**: 右上の ⚙（設定）で切替（初回はブラウザの言語）。出力ファイル名・manifest は言語に依らず同じ。
+- **設定（⚙）**: 言語・共有（QR コード: アプリURL／ソースURL）・更新履歴・他のアプリ・保存データを消す。
+  ⛶ で全画面表示。
 
 ## 使い方
 
@@ -114,10 +117,13 @@ manifest_<object>.json:
 | `brush.js` | `select_region` 相当のコア（純関数, node でテスト可能） |
 | `mask_io.js` | ZIP取り込み用の純関数（manifest解析・2値化, node でテスト可能） |
 | `mask_transform.js` | マスクの剛体変換（平行移動＋回転）の純関数（逆ワープ・回転ハンドル位置算出, node でテスト可能） |
-| `app.js` | UI・入出力・状態管理・IndexedDB・ZIP出力／取り込み・前マスクコピー |
+| `app.js` | UI・入出力・状態管理・IndexedDB・ZIP出力／取り込み・前マスクコピー・設定画面 |
+| `i18n.js` | 日英切替（yukmmz.github.io の各アプリで共通の同一ファイル） |
+| `strings.js` | UI 文字列（日英）と更新履歴 `CHANGELOG` |
 | `test_brush.js` | `brush.js` の node 単体テスト（`node test_brush.js`） |
 | `test_mask_io.js` | `mask_io.js` の node 単体テスト（`node test_mask_io.js`） |
 | `test_mask_transform.js` | `mask_transform.js` の node 単体テスト（`node test_mask_transform.js`） |
+| `test_strings.js` | 日英の文字列キーの一致・更新履歴と `APP_VERSION` の一致（`node test_strings.js`） |
 
 ## 開発・テスト
 
@@ -128,8 +134,14 @@ python3 -m http.server 8000 # ローカル確認（http://localhost:8000）
 
 ## バージョン履歴
 
-バージョンは上部ツールバー右端に `mask-annotator vX.Y.Z` 形式で表示される。
-単一情報源は `app.js` の `APP_VERSION`。表示を変えたらここも更新すること。
+バージョンは上部ツールバー左端のアプリ名の横に `vX.Y.Z` 形式で表示され、押すと更新履歴が開く。
+単一情報源は `app.js` の `APP_VERSION`。上げたら `strings.js` の `CHANGELOG` 先頭とここも更新すること。
+
+- **v1.1.0** — 共通UI（yukmmz.github.io の各アプリと同じ）
+  - アプリ名＋バージョンを左上に表示（バージョンを押すと更新履歴）
+  - ⚙ 設定: 言語（日本語 / English）・共有（QR）・更新履歴・他のアプリ・保存データを消す
+  - ⛶ 全画面表示ボタン
+  - QR 表示を「その他 ⋯」メニューから設定（⚙）の「共有」へ移動
 
 - **v1.0.0** — 初のバージョン付き公開リリース。これまでの全機能を集約した初版。
   - ピクセルマスク注釈（ブラシ ADD/REMOVE、sim/reach による領域選択、Undo）

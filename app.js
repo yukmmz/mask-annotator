@@ -20,6 +20,15 @@
 
   const $ = (id) => document.getElementById(id);
 
+  // UI language (ja/en). Strings live in strings.js; i18n.js is shared by all apps.
+  // Init before anything writes text, so the first render is already translated.
+  const LANG_KEY = 'mask-annotator/lang';
+  const SEEN_VERSION_KEY = 'mask-annotator/seen-version';
+  const LS_PREFIX = 'mask-annotator/';   // every localStorage key this app uses starts with this
+  const IDB_NAME = 'mask-annotator';     // IndexedDB database holding the in-progress masks
+  I18N.init(LANG_KEY, AppStrings.STRINGS);
+  const t = (key, params) => I18N.t(key, params);
+
   const state = {
     frames: [],        // [{name,W,H,bitmap,diffBitmap,imgData,diff,mask,history}]
     bg: null,          // {W,H,imgData}
@@ -88,7 +97,7 @@
   function idb() {
     if (_db) return Promise.resolve(_db);
     return new Promise((res, rej) => {
-      const r = indexedDB.open('mask-annotator', 1);
+      const r = indexedDB.open(IDB_NAME, 1);
       r.onupgradeneeded = () => r.result.createObjectStore('masks');
       r.onsuccess = () => { _db = r.result; res(_db); };
       r.onerror = () => rej(r.error);
@@ -147,11 +156,11 @@
   }
 
   async function onLoadFrames(files) {
-    if (modalBusy()) { setStatus('編集モード中です。先に確定/取消してください'); return; }
+    if (modalBusy()) { setStatus('stBusy'); return; }
     const list = [...files].filter((f) => f.type.startsWith('image/'));
     if (!list.length) return;
     list.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-    setStatus('読込中...');
+    setStatus('stLoading');
     const frames = [];
     for (const f of list) {
       const im = await loadScaledImage(f);
@@ -168,19 +177,19 @@
     await restoreMasks();
     if (state.bg) await computeAllDiffs();
     fitView(); rebuildOverlays(); updateFrameLabel();
-    setStatus(`${frames.length}枚読込`);
+    setStatus('stLoadedN', { n: frames.length });
   }
 
   async function onLoadBg(file) {
-    if (modalBusy()) { setStatus('編集モード中です。先に確定/取消してください'); return; }
+    if (modalBusy()) { setStatus('stBusy'); return; }
     const im = await loadScaledImage(file);
     state.bg = { W: im.W, H: im.H, imgData: im.imgData };
-    $('bgState').textContent = 'bg:あり'; $('bgState').classList.remove('off');
+    updateBgState();
     // 背景ファイル名 background_<stem>.png から pack名を自動取得
     const m = file.name.match(/^background[_-](.+)\.[^.]+$/i);
     if (m && !state.packName) await setPackName(m[1]);
     if (state.frames.length) { await computeAllDiffs(); render(); }
-    setStatus('背景読込: 賢いブラシ有効');
+    setStatus('stBgLoaded');
   }
 
   async function setPackName(name) {
@@ -369,7 +378,7 @@
   function setChromeCollapsed(v) {
     chromeCollapsed = v;
     $('app').classList.toggle('collapsed', v);
-    $('btnChrome').textContent = v ? 'メニュー ▼' : '隠す ▲';
+    updateChromeLabel();
     resizeView();   // キャンバス実寸を測り直して再描画（カメラはそのまま）
   }
   // モード（移動/回転・翼3点・Auto）に入った時、畳まれていれば展開して操作ボタンを見せる
@@ -458,7 +467,7 @@
         e.preventDefault(); return;
       }
       if (!objectReady()) {            // 対象未入力ならマスク作成不可
-        setStatus('対象を入力してください（必須）'); e.preventDefault(); return;
+        setStatus('stNeedObject'); e.preventDefault(); return;
       }
       if (state.lassoOutside) {         // 外側選択: Pencilでなぞって範囲を囲む
         lassoing = true; lassoId = e.pointerId; view.setPointerCapture(e.pointerId);
@@ -507,8 +516,7 @@
       const tp = state.threePoint;
       if (tp) {
         const next = WingEllipse.POINT_ORDER.find((k) => tp[k] == null);
-        setStatus(next ? `次の点: ${next} をタップ（点の近くからドラッグで調整可）`
-                       : '3点配置完了 → 確定（点をドラッグで微調整可）');
+        setStatus(next ? 'stThreeNextDrag' : 'stThreeDone', next ? { pt: next } : undefined);
       }
       return;
     }
@@ -547,29 +555,29 @@
 
   // ── フレーム移動・編集操作 ────────────────────────────────
   function gotoFrame(i) {
-    if (modalBusy()) { setStatus('編集モード中です。先に確定/取消してください'); return; }
+    if (modalBusy()) { setStatus('stBusy'); return; }
     clearAutoSeed();   // 自動シードプレビューはフレーム固有なので移動時に破棄
     state.idx = Math.max(0, Math.min(state.frames.length - 1, i));
     rebuildOverlays(); updateFrameLabel();
   }
   function undo() {
-    if (modalBusy()) { setStatus('編集モード中です（取消で破棄できます）'); return; }
+    if (modalBusy()) { setStatus('stBusyUndo'); return; }
     const fr = curFrame(); if (fr && fr.history.length) { fr.mask = fr.history.pop(); repaintMask(); render(); autosave(fr); }
   }
   function clearFrame() {
-    if (modalBusy()) { setStatus('編集モード中です。先に確定/取消してください'); return; }
+    if (modalBusy()) { setStatus('stBusy'); return; }
     const fr = curFrame(); if (!fr) return;
     fr.history.push(fr.mask.slice()); fr.mask = new Uint8Array(fr.W * fr.H);
     repaintMask(); render(); autosave(fr);
   }
   async function switchObject(obj) {
-    if (modalBusy()) { setStatus('編集モード中です。先に確定/取消してください'); return; }
+    if (modalBusy()) { setStatus('stBusy'); return; }
     clearAutoSeed();
     state.object = obj;
     updateObjEmptyCue();
     if (state.frames.length) { await restoreMasks(); rebuildOverlays(); }
     updateFrameLabel();
-    if (!obj) setStatus('対象を入力してください（必須）');
+    if (!obj) setStatus('stNeedObject');
   }
 
   function updateFrameLabel() {
@@ -580,7 +588,20 @@
       : '- / -';
     $('frameName').textContent = fr ? fr.name : '';   // キャンバス左上に表示中の画像名
   }
-  function setStatus(s) { $('status').textContent = s; }
+  // Status line takes an i18n key; the last one is kept so a language switch re-renders it.
+  let lastStatus = null;
+  function setStatus(key, params) {
+    lastStatus = { key, params };
+    $('status').textContent = t(key, params);
+  }
+  function updateBgState() {
+    const b = $('bgState');
+    b.textContent = t(state.bg ? 'bgSet' : 'bgNone');
+    b.classList.toggle('off', !state.bg);
+  }
+  function updateChromeLabel() {
+    $('btnChrome').textContent = t(chromeCollapsed ? 'chromeShow' : 'chromeHide');
+  }
 
   // ── ZIP 出力 ─────────────────────────────────────────────
   function maskToPngBlob(fr) {
@@ -595,11 +616,11 @@
     return new Promise((res) => c.toBlob(res, 'image/png'));
   }
   async function exportZip() {
-    if (modalBusy()) { setStatus('編集モード中です。先に確定/取消してください'); return; }
-    if (!objectReady()) { setStatus('対象を入力してください（必須）'); return; }
-    if (!state.frames.length) { setStatus('画像が未読込'); return; }
-    if (typeof JSZip === 'undefined') { setStatus('JSZip読込失敗（オンライン要）'); return; }
-    setStatus('ZIP生成中...');
+    if (modalBusy()) { setStatus('stBusy'); return; }
+    if (!objectReady()) { setStatus('stNeedObject'); return; }
+    if (!state.frames.length) { setStatus('stNoImages'); return; }
+    if (typeof JSZip === 'undefined') { setStatus('stJszipFail'); return; }
+    setStatus('stZipBuilding');
     const zip = new JSZip();
     const obj = state.object;
     const entries = [];
@@ -618,7 +639,7 @@
     const blob = await zip.generateAsync({ type: 'blob' });
     const prefix = state.packName ? state.packName + '_' : '';
     downloadBlob(blob, `${prefix}${obj}_masks.zip`);
-    setStatus(`ZIP出力: ${entries.filter((e) => e.has_mask).length}枚にマスク`);
+    setStatus('stZipDone', { n: entries.filter((e) => e.has_mask).length });
   }
   function downloadBlob(blob, name) {
     const a = document.createElement('a');
@@ -646,12 +667,12 @@
   async function onImportZips(files) {
     const list = [...files].filter((f) => /\.zip$/i.test(f.name));
     if (!list.length) return;
-    if (modalBusy()) { setStatus('編集モード中です。先に確定/取消してください'); return; }
-    if (!state.frames.length) { setStatus('先に「画像を読込」してください（再開は画像読込後）'); return; }
-    if (typeof JSZip === 'undefined') { setStatus('JSZip読込失敗（オンライン要）'); return; }
-    if (!state.packName) { setStatus('先に「背景」を読み込んでpack名を確定してから取り込んでください'); return; }
+    if (modalBusy()) { setStatus('stBusy'); return; }
+    if (!state.frames.length) { setStatus('stImportNeedFrames'); return; }
+    if (typeof JSZip === 'undefined') { setStatus('stJszipFail'); return; }
+    if (!state.packName) { setStatus('stImportNeedPack'); return; }
 
-    setStatus('ZIP解析中...');
+    setStatus('stZipParsing');
     const loadedNames = new Set(state.frames.map((f) => f.name));
     const plan = [];          // {object, name, entry(JSZipオブジェクト)}
     const unmatched = [];      // 現在の読込画像に存在しないフレーム名（has_mask:true のみ）
@@ -662,7 +683,7 @@
         const zip = await JSZip.loadAsync(file);
         const manifestPaths = Object.keys(zip.files)
           .filter((p) => !zip.files[p].dir && /(^|\/)manifest_.+\.json$/i.test(p));
-        if (!manifestPaths.length) { setStatus(`manifestが見つかりません: ${file.name}`); return; }
+        if (!manifestPaths.length) { setStatus('stNoManifest', { file: file.name }); return; }
         for (const mp of manifestPaths) {
           const man = MaskIO.parseManifest(await zip.file(mp).async('string'));
           const dir = mp.replace(/[^/]+$/, '');   // manifest と同じ階層を mask の基準に
@@ -670,26 +691,26 @@
             if (!fr.has_mask) continue;             // 未注釈フレームは取り込まない（既存維持）
             if (!loadedNames.has(fr.file)) { unmatched.push(fr.file); continue; }
             const entry = zip.file(fr.mask) || zip.file(dir + fr.mask);
-            if (!entry) { setStatus(`マスクPNGが欠落: ${fr.mask}（${file.name}）`); return; }
+            if (!entry) { setStatus('stMissingPng', { mask: fr.mask, file: file.name }); return; }
             plan.push({ object: man.object, name: fr.file, entry });
           }
         }
       }
     } catch (err) {
-      setStatus('ZIP解析エラー: ' + err.message); return;
+      setStatus('stZipParseError', { msg: err.message }); return;
     }
 
     // 未マッチが1件でもあれば中止（部分取り込みはしない）
     if (unmatched.length) {
       const head = unmatched.slice(0, 3).join(', ');
       const more = unmatched.length > 3 ? ' ...' : '';
-      setStatus(`中止: ${unmatched.length}件のマスクが現在の画像と未マッチ (${head}${more})。同じキーフレームを読み込んでから再試行してください`);
+      setStatus('stImportUnmatched', { n: unmatched.length, list: head + more });
       return;
     }
-    if (!plan.length) { setStatus('取り込めるマスクがありません（has_mask が全て false）'); return; }
+    if (!plan.length) { setStatus('stImportNothing'); return; }
 
     // Phase 2: 検証通過後にのみ デコード→リサイズ→IndexedDB 書込
-    setStatus(`取込中... (${plan.length}枚)`);
+    setStatus('stImporting', { n: plan.length });
     const frByName = new Map(state.frames.map((f) => [f.name, f]));
     const objects = new Set();
     try {
@@ -702,11 +723,11 @@
         objects.add(p.object);
       }
     } catch (err) {
-      setStatus('取込エラー: ' + err.message); return;
+      setStatus('stImportError', { msg: err.message }); return;
     }
     // 現在対象は IndexedDB から再読込して即時反映。他対象は switchObject で復元される。
     await restoreMasks(); rebuildOverlays(); updateFrameLabel();
-    setStatus(`取込完了: ${plan.length}枚 / 対象 ${[...objects].join(',')}（上書き）`);
+    setStatus('stImportDone', { n: plan.length, objects: [...objects].join(',') });
   }
 
   // ── 前フレームのマスクをコピー → 移動/回転 → 確定 ────────────
@@ -721,18 +742,17 @@
   }
 
   function copyPrevMask() {
-    if (modalBusy()) { setStatus('編集モード中です。先に確定/取消してください'); return; }
-    if (!objectReady()) { setStatus('対象を入力してください（必須）'); return; }
-    if (!state.frames.length) { setStatus('画像が未読込'); return; }
-    if (state.idx <= 0) { setStatus('前のフレームがありません（先頭フレーム）'); return; }
+    if (modalBusy()) { setStatus('stBusy'); return; }
+    if (!objectReady()) { setStatus('stNeedObject'); return; }
+    if (!state.frames.length) { setStatus('stNoImages'); return; }
+    if (state.idx <= 0) { setStatus('stNoPrevFrame'); return; }
     const prev = state.frames[state.idx - 1];
     const cur = curFrame();
-    if (!anySet(prev.mask)) { setStatus('前フレームにマスクがありません'); return; }
+    if (!anySet(prev.mask)) { setStatus('stPrevEmpty'); return; }
     // 既にマスクがある時は誤操作防止の確認（Undoでも戻せるが二重に保護する）
     if (anySet(cur.mask)) {
-      const ok = window.confirm(
-        'このフレームには既にマスクがあります。\n前フレームのマスクで置き換えますか?\n（あとで Undo で戻せます）');
-      if (!ok) { setStatus('コピーを中止しました'); return; }
+      const ok = window.confirm(t('copyConfirm'));
+      if (!ok) { setStatus('stCopyAborted'); return; }
     }
     enterTransformMode(prev.mask, prev.W, prev.H);
   }
@@ -750,7 +770,7 @@
     };
     $('transformBar').hidden = false;
     updateRotReadout();
-    setStatus('Pencilでドラッグ=移動 / 上の○ハンドルをドラッグ=回転 → 確定');
+    setStatus('stTransform');
     render();
   }
 
@@ -764,29 +784,29 @@
     fr.mask = result;
     exitTransform();
     repaintMask(); clearStrokeCanvas(); render(); autosave(fr); updateFrameLabel();
-    setStatus('コピーを確定（ADD/REMOVEで調整できます）');
+    setStatus('stCopyApplied');
   }
   function exitTransform() { state.transform = null; $('transformBar').hidden = true; }
   function cancelTransform() {
     if (!state.transform) return;
     exitTransform();
     rebuildOverlays();   // 確定マスク（緑）の表示を戻す
-    setStatus('コピーを取消しました');
+    setStatus('stCopyCancelled');
   }
 
   // ── 翼3点 1/4楕円ツール（対象=wing 用の別モード）────────────
   // center→tip→trailing の3点を Pencil タップで配置 → 緑で楕円プレビュー → 確定でマスクに合流。
   function enterThreePoint() {
-    if (modalBusy()) { setStatus('編集モード中です。先に確定/取消してください'); return; }
-    if (!objectReady()) { setStatus('対象を入力してください（必須）'); return; }
-    if (!state.frames.length) { setStatus('画像が未読込'); return; }
-    if (state.object !== 'wing') { setStatus('3点(翼)モードは対象=wingで使います（対象をwingに）'); return; }
+    if (modalBusy()) { setStatus('stBusy'); return; }
+    if (!objectReady()) { setStatus('stNeedObject'); return; }
+    if (!state.frames.length) { setStatus('stNoImages'); return; }
+    if (state.object !== 'wing') { setStatus('stThreeNeedWing'); return; }
     clearAutoSeed();
     setLassoOutside(false);
     revealChrome();
     state.threePoint = { center: null, tip: null, trailing: null, previewCanvas: null };
     $('threePointBar').hidden = false;
-    setStatus('翼3点: center をPencilでタップ（順: center→tip→trailing）');
+    setStatus('stThreeStart');
     render();
   }
   function recomputeThreePointPreview() {
@@ -802,11 +822,11 @@
     const tp = state.threePoint; if (!tp) return null;
     const order = WingEllipse.POINT_ORDER;
     const idx = order.findIndex((k) => tp[k] == null);
-    if (idx === -1) { setStatus('3点配置済み（点をドラッグで調整 / 確定 / クリア）'); return null; }
+    if (idx === -1) { setStatus('stThreeAllPlaced'); return null; }
     tp[order[idx]] = [w.x, w.y];
     recomputeThreePointPreview();
     const next = order.findIndex((k) => tp[k] == null);
-    setStatus(next === -1 ? '3点配置完了 → 確定（点をドラッグで微調整可）' : `次の点: ${order[next]} をタップ`);
+    setStatus(next === -1 ? 'stThreeDone' : 'stThreeNext', next === -1 ? undefined : { pt: order[next] });
     render();
     return order[idx];
   }
@@ -830,26 +850,26 @@
     for (let i = order.length - 1; i >= 0; i--) { if (tp[order[i]] != null) { tp[order[i]] = null; break; } }
     recomputeThreePointPreview();
     const next = order.findIndex((k) => tp[k] == null);
-    setStatus(next === -1 ? '3点配置完了 → 確定' : `次の点: ${order[next]} をタップ`);
+    setStatus(next === -1 ? 'stThreeDoneShort' : 'stThreeNext', next === -1 ? undefined : { pt: order[next] });
     render();
   }
   function clearThreePoint() {
     const tp = state.threePoint; if (!tp) return;
     tp.center = tp.tip = tp.trailing = null; tp.previewCanvas = null;
-    setStatus('点をクリア。center からタップ');
+    setStatus('stThreeCleared');
     render();
   }
   function applyThreePoint() {
     const fr = curFrame(); const tp = state.threePoint; if (!fr || !tp) return;
-    if (!(tp.center && tp.tip && tp.trailing)) { setStatus('3点を配置してください'); return; }
+    if (!(tp.center && tp.tip && tp.trailing)) { setStatus('stThreeNeed3'); return; }
     const em = WingEllipse.quarterEllipseMask(fr.W, fr.H, tp.center, tp.tip, tp.trailing);
-    if (!anySet(em)) { setStatus('退化した3点（一直線）。置き直してください'); return; }
+    if (!anySet(em)) { setStatus('stThreeDegenerate'); return; }
     fr.history.push(fr.mask.slice());               // Undo で戻せるよう退避
     if (fr.history.length > 20) fr.history.shift();
     for (let i = 0; i < em.length; i++) { if (em[i]) fr.mask[i] = 1; }  // 既存マスクへユニオン（加算）
     exitThreePoint();
     repaintMask(); clearStrokeCanvas(); render(); autosave(fr); updateFrameLabel();
-    setStatus('翼楕円を確定（ADD/REMOVEで調整できます）');
+    setStatus('stThreeApplied');
   }
   function exitThreePoint() {
     state.threePoint = null; threeDrag = null; threeDragId = null;
@@ -859,7 +879,7 @@
     if (!state.threePoint) return;
     exitThreePoint();
     rebuildOverlays();
-    setStatus('翼3点モードを取消しました');
+    setStatus('stThreeCancelled');
   }
 
   // ── 自動シード(link): 黒背景の白リンクの土台マスクを自動生成（非モーダル）────
@@ -867,23 +887,23 @@
     const bar = $('autoBar');
     bar.hidden = !bar.hidden;
     if (bar.hidden) { clearAutoSeed(); }   // 閉じたらプレビューを破棄
-    else { revealChrome(); setStatus('Auto(link): スライダ調整 →「Auto実行」で現フレームのシードを計算'); }
+    else { revealChrome(); setStatus('stAutoOpen'); }
   }
   function runAutoSeed() {
-    if (modalBusy()) { setStatus('編集モード中です。先に確定/取消してください'); return; }
-    if (!objectReady()) { setStatus('対象を入力してください（必須）'); return; }
-    const fr = curFrame(); if (!fr) { setStatus('画像が未読込'); return; }
-    if (!fr.diff) { setStatus('背景未読込のため自動シードは使えません（背景を読み込む）'); return; }
+    if (modalBusy()) { setStatus('stBusy'); return; }
+    if (!objectReady()) { setStatus('stNeedObject'); return; }
+    const fr = curFrame(); if (!fr) { setStatus('stNoImages'); return; }
+    if (!fr.diff) { setStatus('stAutoNoBg'); return; }
     const mask = LinkSeed.linkSeedFromDiff(fr.imgData.data, fr.diff, fr.W, fr.H, state.autoParams);
     let cnt = 0; for (let i = 0; i < mask.length; i++) cnt += mask[i];
     state.autoSeed = { mask, canvas: maskToCanvas(mask, fr.W, fr.H, AUTO_PREVIEW) };
     render();
-    setStatus(`自動シード: ${cnt}px（青）→「適用」でマスクに合流（ADD/REMOVE準拠）`);
+    setStatus('stAutoResult', { n: cnt });
   }
   function applyAutoSeed() {
-    if (modalBusy()) { setStatus('編集モード中です。先に確定/取消してください'); return; }
-    if (!objectReady()) { setStatus('対象を入力してください（必須）'); return; }
-    const fr = curFrame(); if (!fr || !state.autoSeed) { setStatus('先に「Auto実行」してください'); return; }
+    if (modalBusy()) { setStatus('stBusy'); return; }
+    if (!objectReady()) { setStatus('stNeedObject'); return; }
+    const fr = curFrame(); if (!fr || !state.autoSeed) { setStatus('stAutoNeedRun'); return; }
     fr.history.push(fr.mask.slice());
     if (fr.history.length > 20) fr.history.shift();
     const sm = state.autoSeed.mask;
@@ -891,7 +911,7 @@
     for (let i = 0; i < sm.length; i++) { if (sm[i]) fr.mask[i] = 1; }
     clearAutoSeed();
     repaintMask(); render(); autosave(fr); updateFrameLabel();
-    setStatus('自動シードを追加で適用（Undoで戻せます）');
+    setStatus('stAutoApplied');
   }
   function clearAutoSeed() { if (state.autoSeed) { state.autoSeed = null; render(); } }
 
@@ -903,7 +923,7 @@
   }
   function toggleAutoPin() {
     setAutoPinned(!state.autoPinned);
-    setStatus(state.autoPinned ? 'Auto実行/Auto適用をクイックバーに常駐' : 'Auto常駐を解除');
+    setStatus(state.autoPinned ? 'stAutoPinned' : 'stAutoUnpinned');
   }
 
   // ── 外側選択（なげなわ）: 囲んだ範囲の外側を ADD/REMOVE ─────────
@@ -914,11 +934,11 @@
     if (!on && lassoing) { lassoing = false; lassoId = null; lassoPts = []; clearStrokeCanvas(); render(); }
   }
   function toggleLassoOutside() {
-    if (modalBusy()) { setStatus('編集モード中です。先に確定/取消してください'); return; }
+    if (modalBusy()) { setStatus('stBusy'); return; }
     setLassoOutside(!state.lassoOutside);
     setStatus(state.lassoOutside
-      ? ' 外側選択ON: Pencilで囲むと外側を' + (state.addMode ? '追加' : '削除') + '（OFFで通常ブラシ）'
-      : '外側選択OFF');
+      ? (state.addMode ? 'stLassoOnAdd' : 'stLassoOnRemove')
+      : 'stLassoOff');
   }
 
   // ドラッグ中のなげなわ輪郭を strokeCanvas に描く（終点→始点を結んで閉じた形を表示）
@@ -944,17 +964,17 @@
   function applyLassoOutside(pts) {
     const fr = curFrame(); if (!fr) return;
     clearStrokeCanvas();
-    if (!objectReady()) { render(); setStatus('対象を入力してください（必須）'); return; }
-    if (pts.length < 3) { render(); setStatus('範囲が小さすぎます（もっと大きく囲む）'); return; }
+    if (!objectReady()) { render(); setStatus('stNeedObject'); return; }
+    if (pts.length < 3) { render(); setStatus('stLassoSmall'); return; }
     const inside = Lasso.polygonFillMask(pts, fr.W, fr.H);
     let nin = 0; for (let i = 0; i < inside.length; i++) nin += inside[i];
-    if (nin === 0) { render(); setStatus('範囲を囲めませんでした'); return; }
+    if (nin === 0) { render(); setStatus('stLassoEmpty'); return; }
     fr.history.push(fr.mask.slice());            // Undo で戻せるよう退避
     if (fr.history.length > 20) fr.history.shift();
     if (state.addMode) { for (let i = 0; i < inside.length; i++) { if (!inside[i]) fr.mask[i] = 1; } }
     else { for (let i = 0; i < inside.length; i++) { if (!inside[i]) fr.mask[i] = 0; } }
     repaintMask(); render(); autosave(fr); updateFrameLabel();
-    setStatus(`囲んだ範囲の外側を${state.addMode ? '追加' : '削除'}（Undoで戻せます）`);
+    setStatus(state.addMode ? 'stLassoAppliedAdd' : 'stLassoAppliedRemove');
   }
 
   // ── UI 配線 ──────────────────────────────────────────────
@@ -974,7 +994,7 @@
   function applyObjectFromInput() {
     const inp = $('objInput');
     // 編集モード中の対象変更はブロックし、入力を元に戻す
-    if (modalBusy()) { setStatus('編集モード中です。先に確定/取消してください'); inp.value = state.object; return; }
+    if (modalBusy()) { setStatus('stBusy'); inp.value = state.object; return; }
     const v = sanitizeObject(inp.value);   // 安全な文字のみに正規化
     inp.value = v;
     switchObject(v);
@@ -1000,11 +1020,11 @@
     if (!$('moreMenu').hidden && !e.target.closest('.menu-wrap')) closeMore();
   });
 
-  // アプリ名＋バージョン（ツールバー最右に表示）。ここが単一情報源。
+  // アプリ名＋バージョン（ツールバー左端に表示）。ここが単一情報源。
   // 反映確認の curl ポーリングは APP_VERSION の文字列を grep する。
-  const APP_NAME = 'mask-annotator';
-  const APP_VERSION = '1.0.0';
-  $('appVersion').textContent = APP_NAME + ' v' + APP_VERSION;
+  // Bumping it means adding a CHANGELOG entry in strings.js (test_strings.js checks this).
+  const APP_VERSION = '1.1.0';
+  $('appVersion').textContent = 'v' + APP_VERSION;
 
   // QR表示（アプリURL/ソースURLを読取れるQRで提示）。QR画像はこれらの固定URLを
   // エンコード済み（scratch/gen_qr.py で生成）。表示テキストも同一に保つ。
@@ -1012,11 +1032,151 @@
   const QR_SRC_URL = 'https://github.com/yukmmz/mask-annotator';
   $('qrUrl').textContent = QR_APP_URL;
   $('qrSrcUrl').textContent = QR_SRC_URL;
-  $('btnQR').onclick = () => { $('qrOverlay').hidden = false; };
+
+  // ── Common settings sheet / changelog / full screen (same in every app) ──
+  // The sheet and overlays are fixed-position siblings above #stage, so taps on
+  // them never reach the canvas pointer handlers (those listen on #view only).
+  function setSettingsOpen(open) {
+    $('settings-panel').hidden = !open;
+    $('sheet-backdrop').hidden = !open;
+    $('settings-btn').setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  function closeAllOverlays() {
+    setSettingsOpen(false);
+    $('qrOverlay').hidden = true;
+    $('changelogOverlay').hidden = true;
+  }
+
+  function readSeenVersion() {
+    try { return window.localStorage.getItem(SEEN_VERSION_KEY); } catch (_) { return null; }
+  }
+  function writeSeenVersion() {
+    try { window.localStorage.setItem(SEEN_VERSION_KEY, APP_VERSION); } catch (_) { /* ignore */ }
+  }
+  function syncNewsMark() {
+    const hasNews = readSeenVersion() !== APP_VERSION;
+    $('settings-btn').classList.toggle('has-news', hasNews);
+    $('changelogBtn').classList.toggle('has-news', hasNews);
+  }
+  // Number of saved masks in IndexedDB (0 when unavailable).
+  async function idbCount() {
+    const db = await idb();
+    return new Promise((res) => {
+      const rq = db.transaction('masks', 'readonly').objectStore('masks').count();
+      rq.onsuccess = () => res(rq.result || 0); rq.onerror = () => res(0);
+    });
+  }
+  // First visit ever: nothing is "new", so record the version quietly. A user who
+  // already has masks saved (IndexedDB) but no seen-version is upgrading and gets the dot.
+  async function initSeenVersion() {
+    if (readSeenVersion() === null) {
+      let hadData = false;
+      try { hadData = (await idbCount()) > 0; } catch (_) { /* ignore */ }
+      if (!hadData) writeSeenVersion();
+    }
+    syncNewsMark();
+  }
+
+  function buildChangelog() {
+    const listEl = $('changelogList');
+    listEl.textContent = '';
+    const lang = I18N.lang();
+    for (const entry of AppStrings.CHANGELOG) {
+      const section = document.createElement('section');
+      section.className = 'changelog-entry';
+      const head = document.createElement('h3');
+      head.className = 'changelog-version';
+      head.textContent = 'v' + entry.version + ' (' + entry.date + ')';
+      section.appendChild(head);
+      const ul = document.createElement('ul');
+      for (const item of entry.items) {
+        const li = document.createElement('li');
+        li.textContent = item[lang] || item.ja;
+        ul.appendChild(li);
+      }
+      section.appendChild(ul);
+      listEl.appendChild(section);
+    }
+  }
+  function openChangelog() {
+    setSettingsOpen(false);
+    $('changelogOverlay').hidden = false;
+    $('changelogList').scrollTop = 0;
+    writeSeenVersion();
+    syncNewsMark();
+  }
+
+  // ⛶ toggles full screen. Hidden where the browser cannot do it (iPhone).
+  function fullscreenElement() {
+    return document.fullscreenElement || document.webkitFullscreenElement || null;
+  }
+  function toggleFullscreen() {
+    const root = document.documentElement;
+    if (fullscreenElement()) {
+      (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    } else {
+      const req = root.requestFullscreen || root.webkitRequestFullscreen;
+      if (req) {
+        const p = req.call(root);
+        if (p && typeof p.catch === 'function') p.catch(() => { /* ignore */ });
+      }
+    }
+  }
+  function initFullscreen() {
+    const root = document.documentElement;
+    const supported = !!(root.requestFullscreen || root.webkitRequestFullscreen);
+    $('fullscreen-btn').hidden = !supported;
+    $('fullscreen-btn').onclick = toggleFullscreen;
+  }
+
+  // Delete everything this app keeps in the browser (masks in IndexedDB, and
+  // every mask-annotator/* localStorage key incl. language / seen-version), then reload.
+  function clearSavedData() {
+    if (!window.confirm(t('c.clearConfirm'))) return;
+    try {
+      const keys = [];
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const k = window.localStorage.key(i);
+        if (k && k.startsWith(LS_PREFIX)) keys.push(k);
+      }
+      keys.forEach((k) => window.localStorage.removeItem(k));
+    } catch (_) { /* ignore */ }
+    if (_db) { _db.close(); _db = null; }   // an open connection would block the delete
+    let rq;
+    try { rq = indexedDB.deleteDatabase(IDB_NAME); } catch (_) { window.location.reload(); return; }
+    rq.onsuccess = () => window.location.reload();
+    rq.onerror = () => window.location.reload();
+    rq.onblocked = () => window.alert(t('clearBlocked'));   // another tab still has it open
+  }
+
+  // Text built in JS rather than marked up with data-i18n.
+  function applyLanguage() {
+    $('lang-select').value = I18N.lang();
+    buildChangelog();
+    updateBgState();
+    updateChromeLabel();
+    if (lastStatus) $('status').textContent = t(lastStatus.key, lastStatus.params);
+  }
+
+  $('settings-btn').onclick = () => { closeMore(); setSettingsOpen($('settings-panel').hidden); };
+  $('settings-close').onclick = () => setSettingsOpen(false);
+  $('sheet-backdrop').addEventListener('click', () => setSettingsOpen(false));
+  $('appVersion').onclick = openChangelog;
+  $('changelogBtn').onclick = openChangelog;
+  $('changelogClose').onclick = () => { $('changelogOverlay').hidden = true; };
+  $('changelogOverlay').addEventListener('click', (e) => {
+    if (e.target === $('changelogOverlay')) $('changelogOverlay').hidden = true;  // outside tap
+  });
+  $('qrBtn').onclick = () => { setSettingsOpen(false); $('qrOverlay').hidden = false; };
   $('qrClose').onclick = () => { $('qrOverlay').hidden = true; };
   $('qrOverlay').addEventListener('click', (e) => {
     if (e.target === $('qrOverlay')) $('qrOverlay').hidden = true;  // 背景タップで閉じる
   });
+  $('clearDataBtn').onclick = clearSavedData;
+  $('lang-select').onchange = () => I18N.set($('lang-select').value);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAllOverlays(); });
+  initFullscreen();
+  I18N.onChange(applyLanguage);
 
   // 翼3点モード
   $('btn3pt').onclick = enterThreePoint;
@@ -1058,6 +1218,8 @@
 
   // 初期化
   updateObjEmptyCue();              // 対象未入力の赤枠キューを反映
-  setStatus('対象を入力してください（必須）');
+  applyLanguage();                  // JS-built text (bg tag, hide button, changelog)
+  initSeenVersion();                // has-news dot on ⚙ (async: checks saved masks)
+  setStatus('stNeedObject');
   resizeView();
 })();
