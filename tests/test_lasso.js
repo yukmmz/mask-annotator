@@ -4,7 +4,7 @@
  */
 'use strict';
 const assert = require('assert');
-const { polygonFillMask } = require('./lasso.js');
+const { polygonFillMask } = require('../lasso.js');
 
 let passed = 0;
 function test(name, fn) { fn(); passed++; console.log('  ok -', name); }

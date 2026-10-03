@@ -4,7 +4,7 @@
  */
 'use strict';
 const assert = require('assert');
-const { bboxCenter, transformMask, handlePoint, angleFromPointer } = require('./mask_transform.js');
+const { bboxCenter, transformMask, handlePoint, angleFromPointer } = require('../mask_transform.js');
 
 let passed = 0;
 function test(name, fn) { fn(); passed++; console.log('  ok -', name); }

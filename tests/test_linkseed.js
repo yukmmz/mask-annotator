@@ -4,7 +4,7 @@
  */
 'use strict';
 const assert = require('assert');
-const { candidateMask, erode, dilate, areaFilter, linkSeedFromDiff, SE } = require('./linkseed.js');
+const { candidateMask, erode, dilate, areaFilter, linkSeedFromDiff, SE } = require('../linkseed.js');
 
 let passed = 0;
 function test(name, fn) { fn(); passed++; console.log('  ok -', name); }

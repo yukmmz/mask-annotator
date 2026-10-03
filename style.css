@@ -132,11 +132,20 @@ label { display: flex; align-items: center; gap: 6px; }
   width: 36px; height: 36px; min-height: 36px; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
   color: var(--muted); font-size: 20px; line-height: 1; flex: 0 0 auto;
+  border-radius: 10px;
 }
 /* The gear is the one control that must read at a glance. */
 #settings-btn { font-size: 2.1rem; overflow: visible; }
-#fullscreen-btn { font-size: 1.5rem; }
+#help-btn { font-size: 1.35rem; font-weight: 700; }
 #fullscreen-btn[hidden] { display: none; }
+.fs-icon {
+  width: 22px; height: 22px;
+  fill: none; stroke: currentColor; stroke-width: 2.2;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+#fullscreen-btn .fs-exit,
+#fullscreen-btn.is-fullscreen .fs-enter { display: none; }
+#fullscreen-btn.is-fullscreen .fs-exit { display: block; }
 
 /* ── Settings sheet (centered modal + backdrop; same as the other apps) ── */
 /* body has touch-action:none for the canvas; the sheet and lists must still
@@ -178,7 +187,7 @@ a.linkbtn {
 a.linkbtn:active { filter: brightness(1.3); }
 
 /* ── QR / changelog overlays (dark card; the QR itself stays on white) ── */
-#qrOverlay, #changelogOverlay {
+#qrOverlay, #changelogOverlay, #helpOverlay {
   position: fixed; inset: 0; z-index: 80; display: flex;
   align-items: center; justify-content: center;
   background: rgba(0, 0, 0, 0.72);
@@ -219,6 +228,23 @@ a.linkbtn:active { filter: brightness(1.3); }
 .changelog-version { font-size: 14px; margin: 0 0 4px; }
 .changelog-entry ul { margin: 0; padding-left: 1.2em; font-size: 13px; color: var(--muted); line-height: 1.5; }
 #changelogClose { margin-top: 12px; align-self: center; }
+
+/* How to use window: same card as the changelog; the body scrolls with a finger
+   (touch-action:pan-y comes from .changelog-list). */
+.help-body { font-size: 14px; line-height: 1.6; }
+.help-body h3 { font-size: 14px; margin: 14px 0 4px; color: var(--accent); }
+.help-body h3:first-child { margin-top: 0; }
+.help-body p { margin: 4px 0; }
+.help-body ul, .help-body ol { margin: 4px 0; padding-left: 1.3em; }
+.help-body li { margin: 2px 0; }
+.help-body .note { font-size: 12px; color: var(--muted); }
+.help-body code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .9em; }
+.help-body kbd, .help-body .kbd-like {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85em;
+  padding: 1px 5px; border: 1px solid var(--border); border-bottom-width: 2px;
+  border-radius: 5px; background: var(--bg);
+}
+#helpClose { margin-top: 12px; align-self: center; }
 
 /* A small dot on ⚙ and on the changelog button until the new version's
    changelog has been opened once. */

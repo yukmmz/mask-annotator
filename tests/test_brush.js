@@ -1,5 +1,5 @@
 // node test_brush.js — brush.js コアの単体テスト
-const B = require('./brush.js');
+const B = require('../brush.js');
 
 function assert(c, msg) { if (!c) { console.error('FAIL: ' + msg); process.exit(1); } }
 

@@ -4,7 +4,7 @@
  */
 'use strict';
 const assert = require('assert');
-const { parseManifest, thresholdToMask } = require('./mask_io.js');
+const { parseManifest, thresholdToMask } = require('../mask_io.js');
 
 let passed = 0;
 function test(name, fn) { fn(); passed++; console.log('  ok -', name); }

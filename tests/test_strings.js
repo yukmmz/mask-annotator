@@ -6,14 +6,14 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
-const { STRINGS, CHANGELOG } = require('./strings.js');
+const { STRINGS, CHANGELOG } = require('../strings.js');
 
 let passed = 0;
 function test(name, fn) { fn(); passed++; console.log('  ok -', name); }
 
 const COMMON = ['c.settings', 'c.close', 'c.language', 'c.share', 'c.showQr', 'c.changelog',
   'c.showChangelog', 'c.otherApps', 'c.openPortal', 'c.data', 'c.clearData', 'c.fullscreen',
-  'c.clearConfirm'];
+  'c.clearConfirm', 'c.help'];
 
 test('ja and en have the same keys', () => {
   const ja = Object.keys(STRINGS.ja).sort();
@@ -42,7 +42,7 @@ test('placeholders match between ja and en', () => {
 });
 
 test('every data-i18n* key in index.html exists', () => {
-  const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const re = /data-i18n(?:-html|-title|-aria-label|-placeholder)?="([^"]+)"/g;
   let m; let n = 0;
   while ((m = re.exec(html))) { n++; assert.ok(STRINGS.ja[m[1]] !== undefined, 'missing key ' + m[1]); }
@@ -50,7 +50,7 @@ test('every data-i18n* key in index.html exists', () => {
 });
 
 test('every setStatus/t() key in app.js exists', () => {
-  const js = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8');
+  const js = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
   const re = /(?:setStatus\(|\bt\(|\?\s*|:\s*)'((?:st|c\.)[A-Za-z.]+|copyConfirm|clearBlocked|bgSet|bgNone|chromeShow|chromeHide)'/g;
   let m; let n = 0;
   while ((m = re.exec(js))) { n++; assert.ok(STRINGS.ja[m[1]] !== undefined, 'missing key ' + m[1]); }
@@ -58,7 +58,7 @@ test('every setStatus/t() key in app.js exists', () => {
 });
 
 test('CHANGELOG: newest first, first entry matches APP_VERSION, bilingual', () => {
-  const js = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8');
+  const js = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
   const v = js.match(/const APP_VERSION = '([^']+)'/)[1];
   assert.strictEqual(CHANGELOG[0].version, v);
   for (const e of CHANGELOG) {

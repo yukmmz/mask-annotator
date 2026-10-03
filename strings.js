@@ -12,6 +12,14 @@
 
   /* What changed, newest first. Written for users, in both languages. */
   const CHANGELOG = [
+    { version: '1.2.0', date: '2026-10-01', items: [
+      { ja: '右上に「?」ボタンを追加しました。使い方の窓が開きます（? キーでも開きます）',
+        en: 'Added a "?" button at the top right that opens a "How to use" window (the ? key opens it too)' },
+      { ja: '全画面表示中は、全画面ボタンが「縮小」の形に変わるようにしました',
+        en: 'While in full screen, the full-screen button changes to a "shrink" icon' },
+      { ja: 'アプリのアイコン（ブラウザのタブに出る絵）を付けました',
+        en: 'Added an app icon (shown on the browser tab)' }
+    ] },
     { version: '1.1.0', date: '2026-10-01', items: [
       { ja: 'アプリ名とバージョンを左上に表示しました。バージョンを押すと更新履歴が開きます',
         en: 'The app name and version are shown at the top left; tap the version to open this changelog' },
@@ -45,7 +53,7 @@
       'c.settings': '設定', 'c.close': '閉じる', 'c.language': '言語', 'c.share': '共有',
       'c.showQr': 'QR コードを表示', 'c.changelog': '更新履歴', 'c.showChangelog': '表示',
       'c.otherApps': '他のアプリ', 'c.openPortal': 'アプリ一覧を開く', 'c.data': 'データ',
-      'c.clearData': '保存データを消す', 'c.fullscreen': '全画面表示',
+      'c.clearData': '保存データを消す', 'c.fullscreen': '全画面表示', 'c.exitFullscreen': '全画面を終了', 'c.help': '使い方',
       'c.clearConfirm': 'このブラウザに保存されている、このアプリのデータ（作業中のマスク・言語などの設定）をすべて消して初期状態に戻します。\n' +
         'ZIP 出力していないマスクは失われ、元に戻せません。よろしいですか？',
       clearBlocked: 'このアプリを開いている別のタブがあるため、まだ消せていません。他のタブを閉じてください（閉じると消去して再読み込みします）',
@@ -65,9 +73,43 @@
       threeTag: '翼3点(楕円)', threeUndo: '1点戻す', threeClear: 'クリア',
       threeHint: '順: center → tip → trailing をタップ（点の近くからドラッグで調整可）',
       autoPinTitle: 'Auto実行/Auto適用をクイックバーに常駐', autoApply: '適用',
+      prevFrame: '前の画像', nextFrame: '次の画像',
       // stage
       hint: '「画像を読込」でキーフレーム(frame_*.png)と背景を選択。<br />Apple Pencilで描画 / 指でズーム・移動。',
       chromeHide: '隠す ▲', chromeShow: 'メニュー ▼',
+      // How to use window (header ? / ? key). HTML: the app's own constant text.
+      help:
+        '<h3>基本の流れ</h3>' +
+        '<ol>' +
+        '<li>「<b>画像を読込</b>」でキーフレーム（<code>frame_*.png</code> など）を複数選び、「<b>背景</b>」で背景画像（<code>background_&lt;pack&gt;.png</code>）を選びます。背景があると差分で広がる「賢いブラシ」が使えます。</li>' +
+        '<li>「<b>対象</b>」に名前を入れて OK（必須。robot / box / mech / wing は候補に出ます。英数字・<code>_</code>・<code>-</code>）。未入力の間は入力欄が赤く、塗れません。</li>' +
+        '<li><b>Apple Pencil で塗る</b>とマスクに追加（ADD）。<b>指</b>はピンチでズーム、ドラッグで移動です（塗りません）。</li>' +
+        '<li>全フレームを塗ったら「<b>ZIP出力</b>」。<code>&lt;pack&gt;_&lt;対象&gt;_masks.zip</code> を「ファイル」に保存します。</li>' +
+        '</ol>' +
+        '<h3>クイックバー（2段目）</h3>' +
+        '<ul>' +
+        '<li><b>◀ ▶</b> フレーム移動 / <b>Fit</b> 画面に合わせる</li>' +
+        '<li><b>ADD / REMOVE</b>（右端）で塗る・消すを切替。<b>Undo</b> で1手戻す。</li>' +
+        '<li><b>brush</b> 太さ / <b>sim</b> 差分の似かた / <b>reach</b> 広がる距離。<b>reach=0</b> なら塗った所＋内側の穴だけ。</li>' +
+        '<li><b>外側</b>: ON で Pencil で囲むと、囲んだ範囲の<b>外側</b>をまとめて ADD/REMOVE（REMOVE なら「囲んだ所だけ残す」）。</li>' +
+        '<li>右上の「<b>隠す ▲</b>」で上のバーを畳んで画像を広く表示できます。</li>' +
+        '</ul>' +
+        '<h3>その他 ⋯ のツール</h3>' +
+        '<ul>' +
+        '<li><b>前マスクをコピー</b>: 前フレームのマスクを重ね、Pencil ドラッグで移動・上の ○ ハンドルで回転 →「確定」。確定後はブラシで調整できます。</li>' +
+        '<li><b>3点(翼)</b>: 対象 = wing のとき、center → tip → trailing の順にタップして楕円の翼マスクを作ります。</li>' +
+        '<li><b>Auto(link)</b>: 背景との差分から白いリンクを自動で拾います。スライダ調整 →「Auto実行」→「適用」。📌 でクイックバーに常駐。</li>' +
+        '<li><b>Clear</b> このフレームを消去 / <b>Diff表示</b> 背景との差分を表示</li>' +
+        '<li><b>マスク読込</b>: 出力済み ZIP から続きを再開（先に同じ画像と背景を読み込む）。<b>pack(ZIP名)</b> は背景のファイル名から自動で入り、手で直せます。</li>' +
+        '</ul>' +
+        '<h3>iPad での注意</h3>' +
+        '<ul>' +
+        '<li>Pencil = 描画、指 = ズーム・移動（手のひらが触れても塗りません）。</li>' +
+        '<li>マスクはこの iPad のブラウザ内に自動保存され、サーバーへは送りません。別の端末へは ZIP で渡します。</li>' +
+        '<li>ZIP の出力・読込にはインターネット接続が必要です。</li>' +
+        '<li>「ホーム画面に追加」がおすすめ。更新が反映されないときは1〜2回再読み込みしてください。</li>' +
+        '</ul>' +
+        '<p class="note">キー: <kbd>?</kbd> 使い方 / <kbd>Esc</kbd> 閉じる</p>',
 
       // status messages
       stBusy: '編集モード中です。先に確定/取消してください',
@@ -127,7 +169,7 @@
       'c.settings': 'Settings', 'c.close': 'Close', 'c.language': 'Language', 'c.share': 'Share',
       'c.showQr': 'Show QR codes', 'c.changelog': 'Changelog', 'c.showChangelog': 'Show',
       'c.otherApps': 'Other apps', 'c.openPortal': 'Open app list', 'c.data': 'Data',
-      'c.clearData': 'Clear saved data', 'c.fullscreen': 'Full screen',
+      'c.clearData': 'Clear saved data', 'c.fullscreen': 'Full screen', 'c.exitFullscreen': 'Exit full screen', 'c.help': 'How to use',
       'c.clearConfirm': 'This deletes everything this app has saved in this browser (in-progress masks, language and other settings) and starts over.\n' +
         'Masks you have not exported as a ZIP will be lost. This cannot be undone. Continue?',
       clearBlocked: 'Another tab still has this app open, so the data is not deleted yet. Close the other tabs (this page reloads once it is done)',
@@ -144,8 +186,41 @@
       threeTag: 'Wing 3-point (ellipse)', threeUndo: 'Undo point', threeClear: 'Clear',
       threeHint: 'Tap in order: center → tip → trailing (drag near a point to adjust)',
       autoPinTitle: 'Pin Run Auto / Apply Auto to the quick bar', autoApply: 'Apply',
+      prevFrame: 'Previous image', nextFrame: 'Next image',
       hint: 'Choose key frames (frame_*.png) with “Load images”, then a background.<br />Draw with Apple Pencil / zoom and pan with fingers.',
       chromeHide: 'Hide ▲', chromeShow: 'Menu ▼',
+      help:
+        '<h3>Basic workflow</h3>' +
+        '<ol>' +
+        '<li>Tap <b>Load images</b> and pick several key frames (e.g. <code>frame_*.png</code>), then <b>Background</b> for the background image (<code>background_&lt;pack&gt;.png</code>). With a background, the smart brush grows along the difference.</li>' +
+        '<li>Type an <b>Object</b> name and tap OK (required; robot / box / mech / wing are suggested; letters, digits, <code>_</code> and <code>-</code>). Until then the field is red and you cannot paint.</li>' +
+        '<li><b>Paint with Apple Pencil</b> to add to the mask (ADD). <b>Fingers</b> pinch to zoom and drag to pan; they never paint.</li>' +
+        '<li>When all frames are done, tap <b>Export ZIP</b> and save <code>&lt;pack&gt;_&lt;object&gt;_masks.zip</code> to Files.</li>' +
+        '</ol>' +
+        '<h3>Quick bar (second row)</h3>' +
+        '<ul>' +
+        '<li><b>◀ ▶</b> change frame / <b>Fit</b> fit to screen</li>' +
+        '<li><b>ADD / REMOVE</b> (right end) switches between painting and erasing; <b>Undo</b> takes back one step.</li>' +
+        '<li><b>brush</b> size / <b>sim</b> how similar the difference must be / <b>reach</b> how far it grows. <b>reach=0</b> fills only what you painted plus holes inside it.</li>' +
+        '<li><b>Outside</b>: when on, enclose an area with Pencil to ADD/REMOVE everything <b>outside</b> it (REMOVE = keep only the enclosed part).</li>' +
+        '<li><b>Hide ▲</b> at the top right folds the top bars to show more of the image.</li>' +
+        '</ul>' +
+        '<h3>More ⋯ tools</h3>' +
+        '<ul>' +
+        '<li><b>Copy previous mask</b>: overlays the previous frame\'s mask; drag with Pencil to move, drag the ○ handle on top to rotate, then Apply. Fine-tune with the brush afterwards.</li>' +
+        '<li><b>3-point (wing)</b>: with object = wing, tap center → tip → trailing to make an elliptical wing mask.</li>' +
+        '<li><b>Auto(link)</b>: picks up the white links from the difference to the background. Adjust the sliders → Run Auto → Apply. 📌 pins it to the quick bar.</li>' +
+        '<li><b>Clear</b> erases this frame / <b>Show diff</b> shows the difference to the background</li>' +
+        '<li><b>Import masks</b>: resume from an exported ZIP (load the same images and background first). <b>pack (ZIP name)</b> is filled in from the background file name and can be edited.</li>' +
+        '</ul>' +
+        '<h3>On iPad</h3>' +
+        '<ul>' +
+        '<li>Pencil draws, fingers zoom and pan (a resting palm does not paint).</li>' +
+        '<li>Masks are saved automatically in this iPad\'s browser and never sent to a server. Use a ZIP to move them to another device.</li>' +
+        '<li>Exporting and importing ZIPs needs an internet connection.</li>' +
+        '<li>"Add to Home Screen" is recommended. If an update does not show up, reload once or twice.</li>' +
+        '</ul>' +
+        '<p class="note">Keys: <kbd>?</kbd> how to use / <kbd>Esc</kbd> close</p>',
 
       stBusy: 'An edit mode is active. Apply or cancel it first',
       stBusyUndo: 'An edit mode is active (Cancel discards it)',

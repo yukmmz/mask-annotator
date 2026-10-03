@@ -7,6 +7,16 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>Mask Annotator</title>
+  <link rel="icon" type="image/png" href="icon-192.png" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <meta name="description" content="Paint and erase masks on images with a brush or Apple Pencil, then save them. Runs in your browser; nothing is uploaded." />
+  <!-- Link previews (LINE / Slack / X). og:image must be an absolute URL. -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Mask Annotator" />
+  <meta property="og:description" content="Paint and erase masks on images with a brush or Apple Pencil, then save them. Runs in your browser; nothing is uploaded." />
+  <meta property="og:url" content="https://yukmmz.github.io/mask-annotator/" />
+  <meta property="og:image" content="https://yukmmz.github.io/mask-annotator/icon-192.png" />
+  <meta name="twitter:card" content="summary" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -53,11 +63,17 @@
           </div>
         </span>
       </div>
-      <!-- Common header controls (same in every yukmmz.github.io app): ⛶ then ⚙ at the right end. -->
+      <!-- Common header controls (same in every yukmmz.github.io app): ⛶ then ? then ⚙ at the right end. -->
       <div class="group tb-right">
+        <!-- Label and icon follow the state in syncFullscreenBtn(): corners out = expand, corners in = shrink -->
         <button id="fullscreen-btn" class="btn-icon" type="button"
-                data-i18n-title="c.fullscreen" data-i18n-aria-label="c.fullscreen"
-                title="全画面表示" aria-label="全画面表示">&#x26F6;</button>
+                title="全画面表示" aria-label="全画面表示">
+          <svg class="fs-icon fs-enter" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg>
+          <svg class="fs-icon fs-exit" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M20 15h-5v5M4 15h5v5"/></svg>
+        </button>
+        <button id="help-btn" class="btn-icon" type="button"
+                data-i18n-title="c.help" data-i18n-aria-label="c.help"
+                title="使い方" aria-label="使い方">?</button>
         <button id="settings-btn" class="btn-icon" type="button"
                 data-i18n-title="c.settings" data-i18n-aria-label="c.settings"
                 title="設定" aria-label="設定" aria-expanded="false">&#x2699;</button>
@@ -66,9 +82,9 @@
 
     <!-- 常時表示クイックバー（折りたたんでも残す頻用コントロール） -->
     <div id="quickbar">
-      <button id="btnPrev">◀</button>
+      <button id="btnPrev" title="前の画像" aria-label="前の画像" data-i18n-title="prevFrame" data-i18n-aria-label="prevFrame">◀</button>
       <span id="frameLabel" class="tag">- / -</span>
-      <button id="btnNext">▶</button>
+      <button id="btnNext" title="次の画像" aria-label="次の画像" data-i18n-title="nextFrame" data-i18n-aria-label="nextFrame">▶</button>
       <button id="btnFit">Fit</button>
       <button id="btnLasso" title="囲んだ範囲の外側をADD/REMOVE"
               data-i18n="lasso" data-i18n-title="lassoTitle">外側</button>
@@ -113,7 +129,7 @@
     <!-- 自動シード(link)バー（Auto(link)トグルで表示） -->
     <div id="autoBar" hidden>
       <span class="tag">Auto(link)</span>
-      <button id="btnAutoPin" title="Auto実行/Auto適用をクイックバーに常駐" data-i18n-title="autoPinTitle">&#128204;</button>
+      <button id="btnAutoPin" title="Auto実行/Auto適用をクイックバーに常駐" aria-label="Auto実行/Auto適用をクイックバーに常駐" data-i18n-title="autoPinTitle" data-i18n-aria-label="autoPinTitle">&#128204;</button>
       <label>motion <input id="aMotion" type="range" min="0" max="150" step="1" value="45" /><span id="vMotion">45</span></label>
       <label>white <input id="aWhite" type="range" min="0" max="255" step="1" value="110" /><span id="vWhite">110</span></label>
       <label>yellow <input id="aYellow" type="range" min="0" max="120" step="1" value="35" /><span id="vYellow">35</span></label>
@@ -142,7 +158,7 @@
     <div class="sheet-head">
       <h2 class="sheet-title" data-i18n="c.settings">設定</h2>
       <button id="settings-close" class="btn-icon" type="button"
-              data-i18n-aria-label="c.close" aria-label="閉じる">&#x2715;</button>
+              data-i18n-aria-label="c.close" data-i18n-title="c.close" aria-label="閉じる" title="閉じる">&#x2715;</button>
     </div>
 
     <div class="sheet-row">
@@ -203,6 +219,15 @@
     </div>
   </div>
 
+  <!-- How to use (header ? button / ? key). Content is STRINGS.help (HTML). -->
+  <div id="helpOverlay" hidden>
+    <div class="qrcard changelog-card help-card" role="dialog" data-i18n-aria-label="c.help" aria-label="使い方">
+      <h2 class="changelog-title" data-i18n="c.help">使い方</h2>
+      <div id="helpBody" class="changelog-list help-body" data-i18n-html="help"></div>
+      <button id="helpClose" type="button" data-i18n="c.close">閉じる</button>
+    </div>
+  </div>
+
   <!-- 複数ファイル選択（非表示） -->
   <input id="fileFrames" type="file" accept="image/*" multiple hidden />
   <input id="fileBg" type="file" accept="image/*" hidden />
@@ -210,7 +235,7 @@
   <input id="fileImport" type="file" accept=".zip" multiple hidden />
 
   <!-- JSZip（ZIP生成）。MVP1はCDN、MVP2でオフライン用にvendor化予定 -->
-  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="vendor/jszip.min.js"></script>  <!-- JSZip 3.10.1 (MIT), bundled instead of a CDN -->
   <script src="brush.js"></script>
   <script src="mask_io.js"></script>
   <script src="mask_transform.js"></script>

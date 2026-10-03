@@ -1,103 +1,120 @@
 # mask-annotator
 
-iPad / Apple Pencil で動く、**ブラウザだけで完結するピクセルマスク注釈ツール**（静的Webアプリ）。
-クロノフォトグラフィ（多重露光風合成）パイプライン用に、ロボット/箱などの領域を
-ブラシで塗って抽出する。デスクトップ版 `annotate_robot_mask.py` の iPad 版に相当する。
+*English / [日本語](README_ja.md)*
 
-**公開URL**: https://yukmmz.github.io/mask-annotator/
+**Open the app**: https://yukmmz.github.io/mask-annotator/
 
-## 特徴
+A **pixel-mask annotation tool that runs entirely in the browser** (a static web app), built for iPad / Apple Pencil.
+For a chronophotography (multiple-exposure style compositing) pipeline, you paint regions such as the robot or a box
+with a brush to extract them. It is the iPad counterpart of the desktop tool `annotate_robot_mask.py`.
 
-- **完全クライアントサイド**: 画像はブラウザ内だけで処理。GitHub やサーバーへ一切送らない。
-- **Apple Pencil 対応**: ペンで描画、指でズーム/移動（パームリジェクション付き）。
-- **賢いブラシ**: なぞった所から「差分が似た連結領域」へ自動拡張＋内側の穴埋め
-  （`annotate_robot_mask.py` の `select_region` を JS 移植。背景画像が必要）。
-- **自動保存**: IndexedDB に保存。Safari を閉じても同じ iPad で再開できる。
-- **ZIPから再開**: 出力済みマスクZIPを読み込んで途中から続けられる（別iPad・別ブラウザ・
-  Mac の `annotate_robot_mask.py` で作った続き・他者から受け取ったマスク）。
-- **前マスクをコピー**: 形がほぼ同じ隣接フレームのため、前フレームのマスクをコピーして
-  平行移動・回転で位置合わせ → 確定後はブラシで微調整できる。
-- **外側選択（なげなわ）**: 「外側」をONにしてPencilで範囲を囲むと、囲んだ範囲の外側を
-  まとめてADD/REMOVE（例: REMOVEで「囲んだ所だけ残す」）。Undoで戻せる。
-- **出力**: `<frame>_<object>_mask.png` ＋ `manifest_<object>.json` を ZIP で書き出し。
-- **日本語 / English**: 右上の ⚙（設定）で切替（初回はブラウザの言語）。出力ファイル名・manifest は言語に依らず同じ。
-- **設定（⚙）**: 言語・共有（QR コード: アプリURL／ソースURL）・更新履歴・他のアプリ・保存データを消す。
-  ⛶ で全画面表示。
+## Features
 
-## 使い方
+- **Fully client-side**: images are processed only inside the browser. Nothing is sent to GitHub or any server.
+- **Apple Pencil support**: draw with the pen, zoom/pan with your fingers (with palm rejection).
+- **Smart brush**: grows from where you stroke into connected regions with a similar difference, and fills holes inside
+  (a JS port of `select_region` from `annotate_robot_mask.py`; needs a background image).
+- **Autosave**: saved to IndexedDB. You can resume on the same iPad even after closing Safari.
+- **Resume from ZIP**: load an exported mask ZIP and continue from there (another iPad or browser,
+  a continuation made with `annotate_robot_mask.py` on a Mac, or masks received from someone else).
+- **Copy previous mask**: for neighbouring frames with nearly the same shape, copy the previous frame's mask and
+  align it by moving and rotating → after confirming, fine-tune it with the brush.
+- **Outside selection (lasso)**: turn on "Outside" and circle an area with the Pencil to ADD/REMOVE everything
+  outside it at once (e.g. REMOVE to "keep only what you circled"). Undo reverts it.
+- **Output**: exports `<frame>_<object>_mask.png` + `manifest_<object>.json` as a ZIP.
+- **Japanese / English**: switch in ⚙ (settings) at the top right (the first visit follows the browser language). Output file names and the manifest are the same regardless of language.
+- **Settings (⚙)**: language, share (QR codes: app URL / source URL), changelog, other apps, clear saved data.
+  ⛶ toggles full screen.
+- **How to use (?)**: the ? button at the top right (or the `?` key) opens a window summarising the basic flow, the tools and iPad notes.
 
-1. **画像を用意**（Mac側）: キーフレーム数枚（`frame_*.png`）と背景1枚を iCloud Drive 等に置く。
-   - 背景 = 抽出フォルダの最終フレーム（または median プレート）。差分計算に使う。
-   - 親リポジトリの `scripts/experiments/export_for_ipad.py` でまとめて書き出せる
-     （`ipad_pack_<stem>/` に `frame_*.png` ＋ `background_<stem>.png`）。
-2. **iPad で開く**: https://yukmmz.github.io/mask-annotator/ （「ホーム画面に追加」推奨）。
-3. 「画像を読込」でキーフレームを複数選択 →「背景」で `background_<stem>.png` を選択。
-   - 背景ファイル名から **pack名（`<stem>`）を自動取得**（上部の入力欄で手修正も可）。
-     pack名は ZIP ファイル名と保存名前空間（IndexedDB）に使われ、別データセットとの衝突を防ぐ。
-4. **対象を入力**（必須・自由入力。robot/box/mech/wing は候補表示。英数・`_`・`-` のみ）。
-   未入力の間はマスク作成・ZIP出力ができない（入力欄が赤くなる）。入力後 Apple Pencil で塗る
-   （上部のスライダで brush/similarity/reach 調整）。
-   - `ADD/REMOVE` 切替、`Undo`/`Clear`、`◀▶` でフレーム移動。
-   - `reach=0` は「塗った所＋内側の穴」だけ（差分拡張なし）。
-5. 「ZIP出力」→ `<pack>_<object>_masks.zip` を Files に保存 → Mac で展開して `brush_masks/` に置く。
-6. Mac 側で合成: `compose_robot_gui.py --mask-dir brush_masks/`。
+## How to use
 
-robot と box は対象を切り替えて別々に塗り、両方を同じ ZIP/フォルダに入れる
-（manifest はオブジェクトごと: `manifest_robot.json` / `manifest_box.json`）。
+1. **Prepare the images** (on the Mac): put a few keyframes (`frame_*.png`) and one background in iCloud Drive or similar.
+   - Background = the last frame of the extraction folder (or a median plate). Used to compute differences.
+   - `scripts/experiments/export_for_ipad.py` in the parent repository can export them all at once
+     (`frame_*.png` + `background_<stem>.png` into `ipad_pack_<stem>/`).
+2. **Open on the iPad**: https://yukmmz.github.io/mask-annotator/ ("Add to Home Screen" recommended).
+3. Select several keyframes with "Load images" → choose `background_<stem>.png` with "Background".
+   - The **pack name (`<stem>`) is taken automatically from the background file name** (you can also edit it in the field at the top).
+     The pack name is used for the ZIP file name and the storage namespace (IndexedDB), preventing clashes with other datasets.
+4. **Enter the object** (required, free text; robot/box/mech/wing are suggested; letters, digits, `_` and `-` only).
+   Until it is entered, you cannot create masks or export a ZIP (the field turns red). Once entered, paint with the Apple Pencil
+   (adjust brush/similarity/reach with the sliders at the top).
+   - `ADD/REMOVE` toggle, `Undo`/`Clear`, `◀▶` to move between frames.
+   - `reach=0` gives only "what you painted + holes inside" (no difference-based growth).
+5. "Export ZIP" → save `<pack>_<object>_masks.zip` to Files → unzip it on the Mac into `brush_masks/`.
+6. Composite on the Mac: `compose_robot_gui.py --mask-dir brush_masks/`.
 
-### 対象（object）について
+Paint robot and box separately by switching the object, and put both in the same ZIP/folder
+(the manifest is per object: `manifest_robot.json` / `manifest_box.json`).
 
-対象セレクタには `robot` / `box` のほか、羽ばたき機構研究用の **`mech`（リンク）** /
-**`wing`（翼）** がある。下層（ブラシ・保存・再開・ZIP入出力）はオブジェクト名に依存しないので、
-どの対象も同じ手順でブラシ注釈でき、`manifest_<object>.json` ＋ `<stem>_<object>_mask.png` を出力する。
+### About objects
 
-#### 羽ばたき機構（mech / wing）の運用
+Besides `robot` / `box`, the object selector has **`mech` (links)** / **`wing`** for the flapping-mechanism research.
+The lower layers (brush, saving, resuming, ZIP import/export) do not depend on the object name, so every object
+is annotated with the same steps and outputs `manifest_<object>.json` + `<stem>_<object>_mask.png`.
 
-羽ばたきは **黒背景**で撮影する。リンク=白、翼=黄（半透明）。
+#### Workflow for the flapping mechanism (mech / wing)
 
-- **背景**: 黒背景の **median プレート**を使う（親リポの
-  `export_for_ipad.py --background median` が `ipad_pack_<stem>/` に
-  `frame...JPG` ＋ `background_<stem>.png` を出力。pack名は背景ファイル名から自動取得）。
-- **mech（白リンク）**: 背景差分が効くので賢いブラシ（similarity/reach）でなぞって抽出する。
-- **wing（黄翼）**: 白く薄い膜は背景差分で拾いにくいので、`reach=0`（塗った所＋内側の穴だけ）で
-  手塗りするのが確実。
-- 合成（Mac側）は対象別 manifest（`manifest_mech.json` / `manifest_wing.json`）を読む。
+Flapping is filmed against a **black background**. Links = white, wings = yellow (semi-transparent).
 
-## ZIPから再開（途中から続ける）
+- **Background**: use a **median plate** of the black background (`export_for_ipad.py --background median`
+  in the parent repository outputs `frame...JPG` + `background_<stem>.png` into `ipad_pack_<stem>/`.
+  The pack name is taken automatically from the background file name).
+- **mech (white links)**: background difference works, so trace them with the smart brush (similarity/reach) to extract them.
+- **wing (yellow wings)**: the thin, whitish membrane is hard to pick up by background difference, so painting by hand
+  with `reach=0` (only what you painted + holes inside) is the reliable way.
+- Compositing (on the Mac) reads the per-object manifests (`manifest_mech.json` / `manifest_wing.json`).
 
-別端末や Mac で作ったマスクの続きを iPad で編集したいときに使う。
+### Resume from ZIP (continue where you left off)
 
-1. いつも通り「画像を読込」→「背景」を選び、**pack名を確定**させる（再開も画像読込後に行う）。
-2. **「マスク読込」**ボタンを押し、`*_robot_masks.zip` / `*_box_masks.zip` を選ぶ（複数可）。
-3. ZIP内の `manifest_<object>.json` と `*_mask.png` をフレーム名で突合して取り込み、
-   現在のフレーム解像度へ最近傍リサイズ＋2値化して反映する。robot/box を一括取込できる。
-4. そのまま続きを描き、完了したら「ZIP出力」。
+Use this when you want to continue on the iPad with masks made on another device or the Mac.
 
-注意:
-- **未マッチがあると取り込みを中止する**: ZIP内のマスク付きフレーム名が、いま読み込んでいる
-  画像のどれとも一致しない場合、安全のため**何も書き込まずに中止**する（部分取り込みなし）。
-  ZIP を作ったときと同じキーフレームを読み込んでから再試行すること。
-- 取込は既存の同フレーム・同対象マスクを**上書き**する（＝再開の意味）。`has_mask:false`
-  （未注釈）のフレームは取り込まず、現状を維持する。
+1. As usual, "Load images" → choose "Background" and **settle the pack name** (resuming also happens after loading images).
+2. Press **"Load masks"** and choose `*_robot_masks.zip` / `*_box_masks.zip` (several allowed).
+3. It matches `manifest_<object>.json` and `*_mask.png` in the ZIP to frames by name, resizes them (nearest neighbour)
+   to the current frame resolution, binarises them and applies them. robot/box can be imported in one go.
+4. Keep drawing, and "Export ZIP" when done.
 
-## 前マスクをコピー（移動・回転して使い回す）
+Notes:
+- **If anything does not match, the import is aborted**: if a masked frame name in the ZIP matches none of the
+  images currently loaded, it **writes nothing and aborts** for safety (no partial import).
+  Load the same keyframes that were used to make the ZIP, then try again.
+- The import **overwrites** existing masks for the same frame and object (that is what resuming means). Frames with
+  `has_mask:false` (not annotated) are not imported and stay as they are.
 
-連続フレームではマスクの形がほとんど変わらないことが多いので、前フレームの形を再利用する。
+### Copy previous mask (move/rotate and reuse)
 
-1. コピー先のフレームを表示する（`◀▶`）。
-2. **「前マスクをコピー」**を押す。前フレーム（`idx-1`）のマスクがシアン色のプレビューで重なる。
-   - コピー先に**既にマスクがある場合は確認ダイアログ**が出る（誤操作で上書きしないため）。
-     「あとで Undo で戻せます」と案内され、OK でのみ進む。
-3. **Apple Pencil でドラッグ＝平行移動**、**プレビュー上部の○ハンドルをドラッグ＝回転**
-   （PowerPoint / GoodNotes と同じ操作感。回転中心はマスクの外接矩形の中心）。指でのピンチは
-   表示のズーム/移動。
-4. **「確定」**で現在フレームのマスクとして焼き込む（直前の状態は Undo で1手戻せる）。**「取消」**で破棄。
-5. 確定後は手で塗ったマスクと全く同じ扱いで、**ADD/REMOVE ブラシ・Undo・Clear** で調整できる。
+In consecutive frames the mask shape often barely changes, so you can reuse the previous frame's shape.
 
-移動/回転モード中は、誤操作防止のためフレーム移動・対象切替・ZIP出力/読込・Undo/Clear を一時的に
-ブロックする（ステータスに「先に確定/取消してください」と表示）。
+1. Show the target frame (`◀▶`).
+2. Press **"Copy previous mask"**. The previous frame's (`idx-1`) mask is overlaid as a cyan preview.
+   - If the target frame **already has a mask, a confirmation dialog** appears (to avoid overwriting by mistake).
+     It tells you "you can revert with Undo later", and only OK proceeds.
+3. **Drag with the Apple Pencil = move**, **drag the ○ handle above the preview = rotate**
+   (the same feel as PowerPoint / GoodNotes; the rotation centre is the centre of the mask's bounding box). Pinching with
+   fingers zooms/pans the view.
+4. **"Confirm"** burns it in as the current frame's mask (the previous state can be undone by one step with Undo). **"Cancel"** discards it.
+5. After confirming, it is treated exactly like a hand-painted mask and can be adjusted with the **ADD/REMOVE brush, Undo and Clear**.
 
-## 出力フォーマット（親パイプラインとの契約）
+While in move/rotate mode, frame navigation, object switching, ZIP export/import and Undo/Clear are temporarily
+blocked to prevent mistakes (the status shows "Confirm or cancel first").
+
+## Run locally and test
+
+```bash
+python3 -m http.server 8000                       # local check (http://localhost:8000)
+for t in tests/test_*.js; do node $t; done        # unit tests (from the repository root)
+```
+
+## Saved data
+
+- In-progress masks are saved automatically in this browser's **IndexedDB** (per pack), so you can close Safari and resume on the same iPad.
+- The language and the last-seen version are kept in **localStorage** (keys starting with `mask-annotator/`).
+- Nothing is sent to a server. To move work to another device, use "Export ZIP" and "Resume from ZIP".
+- To erase everything, use **⚙ → Clear saved data** (in-progress masks are erased too).
+
+## Output format (the contract with the parent pipeline)
 
 ```
 manifest_<object>.json:
@@ -105,54 +122,51 @@ manifest_<object>.json:
   "frames": [ { "file": "frame_000030.png",
                 "mask": "frame_000030_robot_mask.png", "has_mask": true }, ... ] }
 ```
-マスク PNG は 255=対象 / 0=背景。合成側はキーフレーム解像度へ最近傍リサイズして読む
-ので、解像度が多少違っても問題ない。
+Mask PNGs are 255 = object / 0 = background. The compositing side reads them with a nearest-neighbour resize to the
+keyframe resolution, so a slightly different resolution is fine.
 
-## ファイル構成
+## Files
 
-| ファイル | 役割 |
+| File | Role |
 |---|---|
-| `index.html` | レイアウト・ツールバー |
-| `style.css` | スタイル（タッチ操作の無効化など） |
-| `brush.js` | `select_region` 相当のコア（純関数, node でテスト可能） |
-| `mask_io.js` | ZIP取り込み用の純関数（manifest解析・2値化, node でテスト可能） |
-| `mask_transform.js` | マスクの剛体変換（平行移動＋回転）の純関数（逆ワープ・回転ハンドル位置算出, node でテスト可能） |
-| `app.js` | UI・入出力・状態管理・IndexedDB・ZIP出力／取り込み・前マスクコピー・設定画面 |
-| `i18n.js` | 日英切替（yukmmz.github.io の各アプリで共通の同一ファイル） |
-| `strings.js` | UI 文字列（日英）と更新履歴 `CHANGELOG` |
-| `test_brush.js` | `brush.js` の node 単体テスト（`node test_brush.js`） |
-| `test_mask_io.js` | `mask_io.js` の node 単体テスト（`node test_mask_io.js`） |
-| `test_mask_transform.js` | `mask_transform.js` の node 単体テスト（`node test_mask_transform.js`） |
-| `test_strings.js` | 日英の文字列キーの一致・更新履歴と `APP_VERSION` の一致（`node test_strings.js`） |
+| `index.html` | Layout and toolbar |
+| `style.css` | Styles (disabling touch gestures, etc.) |
+| `brush.js` | Core equivalent of `select_region` (pure functions, testable with node) |
+| `mask_io.js` | Pure functions for ZIP import (manifest parsing, binarising; testable with node) |
+| `mask_transform.js` | Pure functions for rigid mask transforms (move + rotate): inverse warping, rotation-handle position (testable with node) |
+| `app.js` | UI, input/output, state, IndexedDB, ZIP export/import, copy previous mask, settings |
+| `i18n.js` | Japanese/English switching (the same file shared by every app on yukmmz.github.io) |
+| `strings.js` | UI strings (Japanese/English) and the changelog `CHANGELOG` |
+| `tests/test_brush.js` | node unit tests for `brush.js` (`node tests/test_brush.js`) |
+| `tests/test_mask_io.js` | node unit tests for `mask_io.js` (`node tests/test_mask_io.js`) |
+| `tests/test_mask_transform.js` | node unit tests for `mask_transform.js` (`node tests/test_mask_transform.js`) |
+| `tests/test_strings.js` | Checks that Japanese/English string keys match and that the changelog matches `APP_VERSION` (`node tests/test_strings.js`) |
 
-## 開発・テスト
+## Version history
 
-```bash
-node test_brush.js          # ブラシコアの単体テスト
-python3 -m http.server 8000 # ローカル確認（http://localhost:8000）
-```
+The version is shown as `vX.Y.Z` next to the app name at the left end of the top toolbar; tapping it opens the changelog.
+The single source of truth is `APP_VERSION` in `app.js`. When you bump it, also update the top of `CHANGELOG` in `strings.js` and this list (in both README.md and README_ja.md).
 
-## バージョン履歴
+- **v1.2.0** — "?" button at the top right (a How to use window; the `?` key opens it too)
 
-バージョンは上部ツールバー左端のアプリ名の横に `vX.Y.Z` 形式で表示され、押すと更新履歴が開く。
-単一情報源は `app.js` の `APP_VERSION`。上げたら `strings.js` の `CHANGELOG` 先頭とここも更新すること。
+- **v1.1.0** — Common UI (the same as the other apps on yukmmz.github.io)
+  - App name + version at the top left (tap the version to open the changelog)
+  - ⚙ Settings: language (日本語 / English), share (QR), changelog, other apps, clear saved data
+  - ⛶ full-screen button
+  - QR display moved from the "More ⋯" menu to "Share" in settings (⚙)
 
-- **v1.1.0** — 共通UI（yukmmz.github.io の各アプリと同じ）
-  - アプリ名＋バージョンを左上に表示（バージョンを押すと更新履歴）
-  - ⚙ 設定: 言語（日本語 / English）・共有（QR）・更新履歴・他のアプリ・保存データを消す
-  - ⛶ 全画面表示ボタン
-  - QR 表示を「その他 ⋯」メニューから設定（⚙）の「共有」へ移動
+- **v1.0.0** — The first versioned public release, bringing together all the features so far.
+  - Pixel-mask annotation (brush ADD/REMOVE, region selection by sim/reach, Undo)
+  - Loading keyframes (`frame_*.png`) + background, Fit, frame stepping, collapsible chrome
+  - Outside selection (lasso), copy previous mask (rigid transform: move + rotate)
+  - Wing from 3 points (ellipse), Auto (link) automatic seed extraction, Diff view
+  - ZIP export/import (resume), IndexedDB saving, manual pack (ZIP name) input
+  - QR display (app URL / source repository URL)
+  - App name + version shown at the right end of the top toolbar
 
-- **v1.0.0** — 初のバージョン付き公開リリース。これまでの全機能を集約した初版。
-  - ピクセルマスク注釈（ブラシ ADD/REMOVE、sim/reach による領域選択、Undo）
-  - キーフレーム(`frame_*.png`)＋背景の読込、Fit、コマ移動、チョーム折りたたみ
-  - 外側選択（なげなわ）、前マスクのコピー（剛体変換: 平行移動＋回転）
-  - 翼3点(楕円)生成、Auto(link) 自動シード抽出、Diff表示
-  - ZIP出力／取込（途中再開）、IndexedDB 保存、pack(ZIP名) 手入力
-  - QR表示（アプリURL／ソースリポジトリURL）
-  - 上部ツールバー右端にアプリ名＋バージョン表示を追加
+## License / notes
 
-## ライセンス / 注意
+MIT ([LICENSE](LICENSE)).
 
-汎用のブラシ注釈コードのみを含み、研究データや秘密情報は含まない。
-GitHub Pages（public）で配信。
+Contains only general-purpose brush annotation code — no research data or confidential information.
+Served on GitHub Pages (public).

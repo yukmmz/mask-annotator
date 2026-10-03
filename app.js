@@ -1023,7 +1023,7 @@
   // アプリ名＋バージョン（ツールバー左端に表示）。ここが単一情報源。
   // 反映確認の curl ポーリングは APP_VERSION の文字列を grep する。
   // Bumping it means adding a CHANGELOG entry in strings.js (test_strings.js checks this).
-  const APP_VERSION = '1.1.0';
+  const APP_VERSION = '1.2.0';
   $('appVersion').textContent = 'v' + APP_VERSION;
 
   // QR表示（アプリURL/ソースURLを読取れるQRで提示）。QR画像はこれらの固定URLを
@@ -1045,6 +1045,7 @@
     setSettingsOpen(false);
     $('qrOverlay').hidden = true;
     $('changelogOverlay').hidden = true;
+    $('helpOverlay').hidden = true;
   }
 
   function readSeenVersion() {
@@ -1106,6 +1107,14 @@
     syncNewsMark();
   }
 
+  // ? opens the "How to use" window (same card as the changelog).
+  function openHelp() {
+    closeMore();
+    closeAllOverlays();
+    $('helpOverlay').hidden = false;
+    $('helpBody').scrollTop = 0;
+  }
+
   // ⛶ toggles full screen. Hidden where the browser cannot do it (iPhone).
   function fullscreenElement() {
     return document.fullscreenElement || document.webkitFullscreenElement || null;
@@ -1122,11 +1131,25 @@
       }
     }
   }
+  // Swap the icon and label so the button shows what a press will do (expand
+  // when windowed, shrink while full screen). Also runs when the user leaves
+  // full screen with Esc, which never touches the button.
+  function syncFullscreenBtn() {
+    const btn = $('fullscreen-btn');
+    const on = !!fullscreenElement();
+    const label = t(on ? 'c.exitFullscreen' : 'c.fullscreen');
+    btn.classList.toggle('is-fullscreen', on);
+    btn.title = label;
+    btn.setAttribute('aria-label', label);
+  }
   function initFullscreen() {
     const root = document.documentElement;
     const supported = !!(root.requestFullscreen || root.webkitRequestFullscreen);
     $('fullscreen-btn').hidden = !supported;
     $('fullscreen-btn').onclick = toggleFullscreen;
+    document.addEventListener('fullscreenchange', syncFullscreenBtn);
+    document.addEventListener('webkitfullscreenchange', syncFullscreenBtn);
+    syncFullscreenBtn();
   }
 
   // Delete everything this app keeps in the browser (masks in IndexedDB, and
@@ -1155,6 +1178,7 @@
     buildChangelog();
     updateBgState();
     updateChromeLabel();
+    syncFullscreenBtn();
     if (lastStatus) $('status').textContent = t(lastStatus.key, lastStatus.params);
   }
 
@@ -1174,7 +1198,19 @@
   });
   $('clearDataBtn').onclick = clearSavedData;
   $('lang-select').onchange = () => I18N.set($('lang-select').value);
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAllOverlays(); });
+  $('help-btn').onclick = openHelp;
+  $('helpClose').onclick = () => { $('helpOverlay').hidden = true; };
+  $('helpOverlay').addEventListener('click', (e) => {
+    if (e.target === $('helpOverlay')) $('helpOverlay').hidden = true;  // outside tap
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { closeAllOverlays(); return; }
+    // ? opens the help, except while typing (object / pack name, language select).
+    const tag = e.target && e.target.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === '?') { e.preventDefault(); openHelp(); }
+  });
   initFullscreen();
   I18N.onChange(applyLanguage);
 

@@ -4,7 +4,7 @@
  */
 'use strict';
 const assert = require('assert');
-const { quarterEllipseMask, maskFromPoints } = require('./wing_ellipse.js');
+const { quarterEllipseMask, maskFromPoints } = require('../wing_ellipse.js');
 
 let passed = 0;
 function test(name, fn) { fn(); passed++; console.log('  ok -', name); }
